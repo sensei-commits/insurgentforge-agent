@@ -1,0 +1,28 @@
+{
+  "name": "insurgentforge-agent",
+  "version": "0.1.0",
+  "description": "InsurgentForge — AI agent for cost-cutting bot-replacement research + Reddit social management. Sibling to Helena.",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node execution/scheduler.js",
+    "probe": "node execution/probe-all.js",
+    "probe:db": "node execution/probe-db.js",
+    "probe:ai": "node execution/probe-ai.js",
+    "probe:reddit": "node execution/probe-reddit.js",
+    "probe:discord": "node execution/probe-discord.js",
+    "probe:bluesky": "node execution/probe-bluesky.js",
+    "probe:mastodon": "node execution/probe-mastodon.js",
+    "probe:devto": "node execution/probe-devto.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "discord.js": "^14.26.4",
+    "dotenv": "^16.4.5",
+    "google-trends-api": "^4.9.2",
+    "node-cron": "^4.2.1",
+    "pg": "^8.11.3"
+  }
+}
