@@ -20,9 +20,15 @@ function getState(guildId) {
       behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
     });
     const state = { connection: null, player, songs: [], current: null, currentResource: null, volume: 0.5 };
-    player.on(AudioPlayerStatus.Idle, () => playNext(guildId));
+    player.on(AudioPlayerStatus.Idle, () => {
+      console.log(`[music] player idle in ${guildId}, playing next`);
+      playNext(guildId);
+    });
+    player.on(AudioPlayerStatus.Playing, () => {
+      console.log(`[music] player now playing in ${guildId}`);
+    });
     player.on("error", (err) => {
-      console.error(`[music] player error in ${guildId}:`, err.message);
+      console.error(`[music] player error in ${guildId}:`, err.message, err);
       playNext(guildId);
     });
     queues.set(guildId, state);
@@ -75,15 +81,30 @@ async function play(guildId, voiceChannel, query) {
       guildId,
       adapterCreator: voiceChannel.guild.voiceAdapterCreator,
     });
-    state.connection.subscribe(state.player);
-    console.log(`[music] subscribed player to connection`);
+    console.log(`[music] connection created, status: ${state.connection.state.status}`);
+
+    state.connection.on(VoiceConnectionStatus.Ready, () => {
+      console.log(`[music] voice connection ready in ${guildId}`);
+    });
+    state.connection.on(VoiceConnectionStatus.Connecting, () => {
+      console.log(`[music] voice connection connecting in ${guildId}`);
+    });
+    state.connection.on(VoiceConnectionStatus.Signalling, () => {
+      console.log(`[music] voice connection signalling in ${guildId}`);
+    });
+
+    const subscription = state.connection.subscribe(state.player);
+    console.log(`[music] subscribed player to connection, subscription:`, subscription ? "OK" : "FAILED");
+
     state.connection.on(VoiceConnectionStatus.Disconnected, async () => {
+      console.log(`[music] voice connection disconnected in ${guildId}`);
       try {
         await Promise.race([
           entersState(state.connection, VoiceConnectionStatus.Signalling, 5_000),
           entersState(state.connection, VoiceConnectionStatus.Connecting, 5_000),
         ]);
       } catch {
+        console.log(`[music] reconnect timeout, destroying connection in ${guildId}`);
         state.connection.destroy();
         queues.delete(guildId);
       }
