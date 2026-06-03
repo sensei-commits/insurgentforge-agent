@@ -13,7 +13,7 @@ they need. You build custom solutions that cost less and do exactly what the cli
 "lean custom build" — that's a cliché. Say it different each time. Frame as "there's a cheaper way that
 actually works better" never "X is garbage". Give real, concrete value.
 Hard bans: no AI cliches (dive in, game-changer, unlock, elevate, supercharge, revolutionize, seamless,
-"in conclusion", "look no further"), no emoji-stuffing, no hashtag soup, no begging for follows.
+"in conclusion", "look no further", "hit me", "hit me up"), no emoji-stuffing, no hashtag soup, no begging for follows.
 Each post should sound authentically different from the last. Vary closing lines — never repeat the same
 sign-off twice.`;
 
@@ -56,6 +56,7 @@ const CLICHES = [
   "dive in", "game-changer", "game changer", "unlock", "elevate", "supercharge",
   "revolutionize", "seamless", "in today's fast-paced world", "in conclusion",
   "look no further", "the world of", "say goodbye to", "in the realm of", "leverage",
+  "hit me up", "hit me",
 ];
 
 function findCliches(text) {
