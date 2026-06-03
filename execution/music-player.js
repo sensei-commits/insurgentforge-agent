@@ -9,6 +9,7 @@ const {
   NoSubscriberBehavior,
 } = require("@discordjs/voice");
 const playdl = require("play-dl");
+const ffmpegPath = require("ffmpeg-static");
 
 // Per-guild state map
 const queues = new Map();
@@ -43,10 +44,15 @@ async function playNext(guildId) {
       playdl.stream(song.url),
       new Promise((_, reject) => setTimeout(() => reject(new Error("Stream request timed out")), 10_000)),
     ]);
-    console.log(`[music] stream acquired for "${song.title}"`);
+    console.log(`[music] stream acquired for "${song.title}" (type: ${stream.type})`);
     const resource = createAudioResource(stream.stream, {
       inputType: stream.type,
       inlineVolume: true,
+      ffmpegOptions: {
+        '-acodec': 'libopus',
+        '-ar': '48000',
+        '-ac': '2',
+      },
     });
     resource.volume.setVolume(state.volume);
     state.currentResource = resource;
