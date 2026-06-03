@@ -8,6 +8,7 @@ const {
   entersState,
   NoSubscriberBehavior,
 } = require("@discordjs/voice");
+const ytdl = require("ytdl-core");
 const playdl = require("play-dl");
 const ffmpegPath = require("ffmpeg-static");
 
@@ -46,19 +47,18 @@ async function playNext(guildId) {
   state.current = song;
   try {
     console.log(`[music] starting stream for "${song.title}" (${song.url})`);
-    const stream = await Promise.race([
-      playdl.stream(song.url),
+    const audioStream = await Promise.race([
+      ytdl(song.url, {
+        quality: 'highestaudio',
+        filter: 'audioonly',
+        highWaterMark: 1024 * 512,
+      }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("Stream request timed out")), 10_000)),
     ]);
-    console.log(`[music] stream acquired for "${song.title}" (type: ${stream.type})`);
-    const resource = createAudioResource(stream.stream, {
-      inputType: stream.type,
+    console.log(`[music] stream acquired for "${song.title}"`);
+    const resource = createAudioResource(audioStream, {
+      inputType: 'arbitrary',
       inlineVolume: true,
-      ffmpegOptions: {
-        '-acodec': 'libopus',
-        '-ar': '48000',
-        '-ac': '2',
-      },
     });
     resource.volume.setVolume(state.volume);
     state.currentResource = resource;
@@ -114,16 +114,18 @@ async function play(guildId, voiceChannel, query) {
   // Resolve YouTube URL or search query
   let songInfo;
   try {
-    if (playdl.yt_validate(query) === "video") {
+    // Check if it's a YouTube URL
+    if (query.includes("youtube.com") || query.includes("youtu.be")) {
       console.log(`[music] fetching video info for URL: ${query}`);
       const info = await Promise.race([
-        playdl.video_info(query),
+        ytdl.getInfo(query),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Video info lookup timed out")), 8_000)),
       ]);
+      const duration = parseInt(info.videoDetails.lengthSeconds);
       songInfo = {
-        title: info.video_details.title,
+        title: info.videoDetails.title,
         url: query,
-        duration: info.video_details.durationInSec,
+        duration: duration,
       };
       console.log(`[music] video info resolved: "${songInfo.title}"`);
     } else {
