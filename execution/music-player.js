@@ -90,7 +90,7 @@ async function playNext(guildId) {
     });
 
     state.player.play(resource);
-    console.log(`[music] now playing "${song.title}"`);
+    console.log(`[music] now playing "${song.title}", player status: ${state.player.state.status}`);
   } catch (err) {
     console.error(`[music] stream error for "${song.title}":`, err.message);
     playNext(guildId); // skip broken track and try next
@@ -107,6 +107,8 @@ async function play(guildId, voiceChannel, query) {
       channelId: voiceChannel.id,
       guildId,
       adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+      selfMute: false,
+      selfDeaf: false,
     });
     console.log(`[music] connection created, status: ${state.connection.state.status}`);
 
