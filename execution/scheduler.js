@@ -42,6 +42,7 @@ function draftEmbed(d) {
 function buttons(id) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`vg_approve:${id}`).setLabel("Approve & Publish").setEmoji("✅").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`vg_schedule:${id}`).setLabel("Schedule 10am Tomorrow").setEmoji("📅").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`vg_reject:${id}`).setLabel("Reject").setEmoji("❌").setStyle(ButtonStyle.Danger),
   );
 }
@@ -82,16 +83,17 @@ client.once("clientReady", onReady);
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   const [action, draftId] = interaction.customId.split(":");
-  if (!["vg_approve", "vg_reject"].includes(action)) return;
+  if (!["vg_approve", "vg_reject", "vg_schedule"].includes(action)) return;
 
   if (interaction.user.id !== OWNER_ID) {
-    return interaction.reply({ content: "Only the owner can approve drafts.", ephemeral: true });
+    return interaction.reply({ content: "Only the owner can manage drafts.", ephemeral: true });
   }
 
   await interaction.deferUpdate();
   const disabledRow = new ActionRowBuilder().addComponents(
     ButtonBuilder.from(interaction.message.components[0].components[0]).setDisabled(true),
     ButtonBuilder.from(interaction.message.components[0].components[1]).setDisabled(true),
+    ButtonBuilder.from(interaction.message.components[0].components[2]).setDisabled(true),
   );
 
   try {
@@ -103,6 +105,21 @@ client.on("interactionCreate", async (interaction) => {
         allowedMentions: { users: [] },
       });
       console.log(`[scheduler] published draft ${draftId} → ${url}`);
+    } else if (action === "vg_schedule") {
+      const tomorrow10am = new Date();
+      tomorrow10am.setDate(tomorrow10am.getDate() + 1);
+      tomorrow10am.setHours(10, 0, 0, 0);
+      const estOffset = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+      const estTime = new Date(estOffset);
+      const diffMs = estTime.getTime() - new Date().getTime();
+      tomorrow10am.setTime(tomorrow10am.getTime() - diffMs);
+      await query(`UPDATE vg_drafts SET scheduled_publish_at=$1 WHERE id=$2`, [tomorrow10am, draftId]);
+      await interaction.message.edit({
+        content: `📅 Scheduled by <@${OWNER_ID}> to publish tomorrow at 10:00 AM EST`,
+        components: [disabledRow],
+        allowedMentions: { users: [] },
+      });
+      console.log(`[scheduler] scheduled draft ${draftId} for ${tomorrow10am.toISOString()}`);
     } else {
       await rejectDraft(draftId);
       await interaction.message.edit({
