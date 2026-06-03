@@ -40,10 +40,14 @@ function draftEmbed(d) {
 }
 
 function buttons(id) {
-  return new ActionRowBuilder().addComponents(
+  const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`vg_approve:${id}`).setLabel("Approve & Publish").setEmoji("✅").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`vg_reject:${id}`).setLabel("Reject").setEmoji("❌").setStyle(ButtonStyle.Danger),
   );
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`vg_schedule:${id}`).setLabel("Schedule 10am Tomorrow").setEmoji("📅").setStyle(ButtonStyle.Primary),
+  );
+  return [row1, row2];
 }
 
 async function deliverPendingDrafts() {
@@ -56,7 +60,7 @@ async function deliverPendingDrafts() {
     await channel.send({
       content: `<@${OWNER_ID}> new draft ready for your call:`,
       embeds: [draftEmbed(d)],
-      components: [buttons(d.id)],
+      components: buttons(d.id),
       allowedMentions: { users: [OWNER_ID] },
     });
     await query(`UPDATE vg_drafts SET delivered_at=now() WHERE id=$1`, [d.id]);
@@ -89,9 +93,12 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   await interaction.deferUpdate();
-  const disabledRow = new ActionRowBuilder().addComponents(
+  const disabledRow1 = new ActionRowBuilder().addComponents(
     ButtonBuilder.from(interaction.message.components[0].components[0]).setDisabled(true),
     ButtonBuilder.from(interaction.message.components[0].components[1]).setDisabled(true),
+  );
+  const disabledRow2 = new ActionRowBuilder().addComponents(
+    ButtonBuilder.from(interaction.message.components[1].components[0]).setDisabled(true),
   );
 
   try {
@@ -99,7 +106,7 @@ client.on("interactionCreate", async (interaction) => {
       const { url } = await publishDraft(draftId);
       await interaction.message.edit({
         content: `✅ Published by <@${OWNER_ID}> → ${url}`,
-        components: [disabledRow],
+        components: [disabledRow1, disabledRow2],
         allowedMentions: { users: [] },
       });
       console.log(`[scheduler] published draft ${draftId} → ${url}`);
@@ -114,7 +121,7 @@ client.on("interactionCreate", async (interaction) => {
       await query(`UPDATE vg_drafts SET scheduled_publish_at=$1 WHERE id=$2`, [tomorrow10am, draftId]);
       await interaction.message.edit({
         content: `📅 Scheduled by <@${OWNER_ID}> to publish tomorrow at 10:00 AM EST`,
-        components: [disabledRow],
+        components: [disabledRow1, disabledRow2],
         allowedMentions: { users: [] },
       });
       console.log(`[scheduler] scheduled draft ${draftId} for ${tomorrow10am.toISOString()}`);
@@ -122,7 +129,7 @@ client.on("interactionCreate", async (interaction) => {
       await rejectDraft(draftId);
       await interaction.message.edit({
         content: `❌ Rejected by <@${OWNER_ID}>. Nothing was posted.`,
-        components: [disabledRow],
+        components: [disabledRow1, disabledRow2],
         allowedMentions: { users: [] },
       });
       console.log(`[scheduler] rejected draft ${draftId}`);
