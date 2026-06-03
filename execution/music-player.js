@@ -80,13 +80,16 @@ async function play(guildId, voiceChannel, query) {
   let songInfo;
   try {
     if (playdl.yt_validate(query) === "video") {
+      console.log(`[music] fetching video info for URL: ${query}`);
       const info = await playdl.video_info(query);
       songInfo = {
         title: info.video_details.title,
         url: query,
         duration: info.video_details.durationInSec,
       };
+      console.log(`[music] video info resolved: "${songInfo.title}"`);
     } else {
+      console.log(`[music] searching YouTube for: "${query}"`);
       const results = await playdl.search(query, { limit: 1, source: { youtube: "video" } });
       if (!results.length) throw new Error("No results found on YouTube");
       songInfo = {
@@ -94,10 +97,13 @@ async function play(guildId, voiceChannel, query) {
         url: results[0].url,
         duration: results[0].durationInSec,
       };
+      console.log(`[music] search resolved: "${songInfo.title}"`);
     }
   } catch (err) {
     throw new Error(`Could not find "${query}" — ${err.message}`);
   }
+
+  console.log(`[music] queuing "${songInfo.title}", status: ${state.player.state.status}`);
 
   state.songs.push(songInfo);
 

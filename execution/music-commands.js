@@ -69,7 +69,14 @@ async function handleMusicCommand(interaction) {
   try {
     if (commandName === "play") {
       const query = interaction.options.getString("query");
-      const song = await play(guild.id, voiceChannel, query);
+      console.log(`[music] /play requested: "${query}"`);
+
+      // Timeout after 12 seconds so Discord doesn't hang
+      const song = await Promise.race([
+        play(guild.id, voiceChannel, query),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timed out searching YouTube — try again or use a direct URL")), 12_000)),
+      ]);
+
       const embed = new EmbedBuilder()
         .setColor(0x1db954)
         .setTitle(song.queued ? "📋 Added to queue" : "🎵 Now playing")
