@@ -6,9 +6,6 @@ const cron = require("node-cron");
 const {
   Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
 } = require("discord.js");
-const { Player } = require("discord-player");
-const { DefaultExtractors } = require("@discord-player/extractor");
-const { registerMusicCommands, handleMusicCommand, MUSIC_COMMAND_NAMES } = require("./music-commands");
 const { query, pool } = require("./db");
 const { publishDraft, rejectDraft } = require("./publish");
 
@@ -82,17 +79,7 @@ async function onReady() {
   console.log(`[scheduler] Listening for approvals on <#${CHANNEL_ID}>`);
   console.log(`[scheduler] Research cron jobs ready.`);
 
-  // Initialize discord-player
-  try {
-    const player = new Player(client);
-    await player.extractors.loadMulti(DefaultExtractors);
-    console.log("[scheduler] discord-player initialized ✅");
-  } catch (e) {
-    console.error("[scheduler] discord-player init error:", e.message);
-  }
-
   try { await deliverPendingDrafts(); } catch (e) { console.error("[scheduler] deliver error:", e.message); }
-  await registerMusicCommands(client.user.id);
 }
 client.once("ready", onReady);
 client.once("clientReady", onReady);
@@ -101,11 +88,6 @@ client.once("clientReady", onReady);
 
 client.on("interactionCreate", async (interaction) => {
   try {
-    // Music slash commands
-    if (interaction.isChatInputCommand() && MUSIC_COMMAND_NAMES.has(interaction.commandName)) {
-      return await handleMusicCommand(interaction);
-    }
-
     if (!interaction.isButton()) return;
     const [action, draftId] = interaction.customId.split(":");
     if (!["vg_approve", "vg_reject", "vg_schedule"].includes(action)) return;
