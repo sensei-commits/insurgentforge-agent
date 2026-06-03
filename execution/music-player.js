@@ -48,28 +48,22 @@ async function playNext(guildId) {
   state.current = song;
   try {
     console.log(`[music] starting stream for "${song.title}" (${song.url})`);
-    const ytdlStream = ytdl(song.url, {
-      quality: 'highestaudio',
-      filter: 'audioonly',
-      highWaterMark: 1024 * 512,
-    });
 
-    // Pipe through FFmpeg for proper audio encoding
+    // Use FFmpeg directly with YouTube URL - it handles auth and expiring URLs better
     const ffmpegProcess = spawn(ffmpegPath, [
-      '-i', 'pipe:0',
+      '-i', song.url,
       '-acodec', 'libopus',
       '-ar', '48000',
       '-ac', '2',
       '-f', 'opus',
+      '-b:a', '128k',
       'pipe:1',
     ], {
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
 
-    ytdlStream.pipe(ffmpegProcess.stdin);
-
-    console.log(`[music] stream acquired for "${song.title}", piping through FFmpeg`);
+    console.log(`[music] FFmpeg started for "${song.title}"`);
     const resource = createAudioResource(ffmpegProcess.stdout, {
       inputType: 'opus',
       inlineVolume: true,
@@ -79,10 +73,20 @@ async function playNext(guildId) {
 
     // Handle FFmpeg errors
     ffmpegProcess.stderr.on('data', (data) => {
-      console.log(`[music] FFmpeg: ${data.toString().trim()}`);
+      const msg = data.toString().trim();
+      if (msg && !msg.includes('deprecated') && msg.length < 200) {
+        console.log(`[music] FFmpeg: ${msg}`);
+      }
     });
     ffmpegProcess.on('error', (err) => {
       console.error(`[music] FFmpeg error:`, err.message);
+      playNext(guildId); // try next song
+    });
+    ffmpegProcess.on('exit', (code) => {
+      if (code && code !== 0) {
+        console.log(`[music] FFmpeg exited with code ${code}, playing next`);
+        playNext(guildId);
+      }
     });
 
     state.player.play(resource);
