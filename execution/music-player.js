@@ -1,24 +1,9 @@
 // TOOL: Music player using discord-player (battle-tested library for Discord music bots).
 const { useMainPlayer, useQueue } = require("discord-player");
 
-// Initialize player once
-function initPlayer() {
+async function play(guildId, voiceChannel, query) {
   try {
     const player = useMainPlayer();
-    console.log("[music] discord-player initialized");
-    return player;
-  } catch (err) {
-    console.error("[music] failed to init player:", err.message);
-    return null;
-  }
-}
-
-const player = initPlayer();
-
-async function play(guildId, voiceChannel, query) {
-  if (!player) throw new Error("Player not initialized");
-
-  try {
     console.log(`[music] /play requested for: "${query}"`);
 
     // Get or create queue for this guild
