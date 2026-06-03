@@ -10,6 +10,7 @@ const {
 } = require("@discordjs/voice");
 const ytdl = require("ytdl-core");
 const playdl = require("play-dl");
+const { spawn } = require("child_process");
 const ffmpegPath = require("ffmpeg-static");
 
 // Per-guild state map
@@ -47,21 +48,43 @@ async function playNext(guildId) {
   state.current = song;
   try {
     console.log(`[music] starting stream for "${song.title}" (${song.url})`);
-    const audioStream = await Promise.race([
-      ytdl(song.url, {
-        quality: 'highestaudio',
-        filter: 'audioonly',
-        highWaterMark: 1024 * 512,
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Stream request timed out")), 10_000)),
-    ]);
-    console.log(`[music] stream acquired for "${song.title}"`);
-    const resource = createAudioResource(audioStream, {
-      inputType: 'arbitrary',
+    const ytdlStream = ytdl(song.url, {
+      quality: 'highestaudio',
+      filter: 'audioonly',
+      highWaterMark: 1024 * 512,
+    });
+
+    // Pipe through FFmpeg for proper audio encoding
+    const ffmpegProcess = spawn(ffmpegPath, [
+      '-i', 'pipe:0',
+      '-acodec', 'libopus',
+      '-ar', '48000',
+      '-ac', '2',
+      '-f', 'opus',
+      'pipe:1',
+    ], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    ytdlStream.pipe(ffmpegProcess.stdin);
+
+    console.log(`[music] stream acquired for "${song.title}", piping through FFmpeg`);
+    const resource = createAudioResource(ffmpegProcess.stdout, {
+      inputType: 'opus',
       inlineVolume: true,
     });
     resource.volume.setVolume(state.volume);
     state.currentResource = resource;
+
+    // Handle FFmpeg errors
+    ffmpegProcess.stderr.on('data', (data) => {
+      console.log(`[music] FFmpeg: ${data.toString().trim()}`);
+    });
+    ffmpegProcess.on('error', (err) => {
+      console.error(`[music] FFmpeg error:`, err.message);
+    });
+
     state.player.play(resource);
     console.log(`[music] now playing "${song.title}"`);
   } catch (err) {
