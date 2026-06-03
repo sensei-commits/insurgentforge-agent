@@ -7,6 +7,7 @@ const {
   Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
 } = require("discord.js");
 const { Player } = require("discord-player");
+const { DefaultExtractors } = require("@discord-player/extractor");
 const { registerMusicCommands, handleMusicCommand, MUSIC_COMMAND_NAMES } = require("./music-commands");
 const { query, pool } = require("./db");
 const { publishDraft, rejectDraft } = require("./publish");
@@ -84,8 +85,8 @@ async function onReady() {
   // Initialize discord-player
   try {
     const player = new Player(client);
-    await player.extractors.loadDefault();
-    console.log("[scheduler] discord-player initialized");
+    await player.extractors.loadMulti(DefaultExtractors);
+    console.log("[scheduler] discord-player initialized ✅");
   } catch (e) {
     console.error("[scheduler] discord-player init error:", e.message);
   }
