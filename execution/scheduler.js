@@ -11,6 +11,9 @@ const { publishDraft, rejectDraft } = require("./publish");
 
 // Import the research pipeline
 const { runDeepResearch } = require("./research");
+// Import email monitoring and scheduled publishing
+const { monitorEmails, deliverInteractions } = require("./email-monitor");
+const { publishScheduledPosts } = require("./scheduled-publisher");
 
 const OWNER_ID = process.env.DISCORD_OWNER_ID;
 const CHANNEL_ID = process.env.DISCORD_TRENDS_CHANNEL_ID;
@@ -141,6 +144,31 @@ async function runCronLightResearch() {
   }
 }
 
+async function runCronEmailMonitor() {
+  const ts = new Date().toISOString();
+  console.log(`${ts} [scheduler] 📧 Checking for social media emails...`);
+  try {
+    const interactions = await monitorEmails();
+    if (interactions.length > 0) {
+      await deliverInteractions(interactions);
+      console.log(`${new Date().toISOString()} [scheduler] ✅ delivered ${interactions.length} email summaries.`);
+    }
+  } catch (e) {
+    console.error(`${new Date().toISOString()} [scheduler] ❌ email monitor failed: ${e.message}`);
+  }
+}
+
+async function runCronScheduledPublisher() {
+  try {
+    const result = await publishScheduledPosts();
+    if (result.published > 0) {
+      console.log(`${new Date().toISOString()} [scheduler] ✅ published ${result.published} scheduled posts.`);
+    }
+  } catch (e) {
+    console.error(`${new Date().toISOString()} [scheduler] ❌ scheduled publisher failed: ${e.message}`);
+  }
+}
+
 function setupCrons() {
   // Deep run: Monday 9:00 AM local time
   const deepTask = cron.schedule("0 9 * * 1", runCronDeepResearch, { name: "vanguard_deep" });
@@ -151,6 +179,16 @@ function setupCrons() {
   const lightTask = cron.schedule("0 9 * * *", runCronLightResearch, { name: "vanguard_light" });
   tasks.push(lightTask);
   console.log("[scheduler] LIGHT cron: daily at 9:00 AM (local)");
+
+  // Email monitor: every 30 minutes
+  const emailTask = cron.schedule("*/30 * * * *", runCronEmailMonitor, { name: "vanguard_email" });
+  tasks.push(emailTask);
+  console.log("[scheduler] EMAIL monitor: every 30 minutes");
+
+  // Scheduled publisher: every 5 minutes
+  const publishTask = cron.schedule("*/5 * * * *", runCronScheduledPublisher, { name: "vanguard_publish" });
+  tasks.push(publishTask);
+  console.log("[scheduler] SCHEDULED publisher: every 5 minutes");
 }
 
 // ── LIFECYCLE ────────────────────────────────────────────────────────────

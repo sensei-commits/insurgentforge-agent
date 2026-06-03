@@ -59,8 +59,12 @@ const STATEMENTS = [
     created_at    timestamptz NOT NULL DEFAULT now(),
     delivered_at  timestamptz,
     published_at  timestamptz,
-    published_url text
+    published_url text,
+    scheduled_publish_at timestamptz
   );`,
+
+  // additive column for scheduled publishing (idempotent)
+  `ALTER TABLE vg_drafts ADD COLUMN IF NOT EXISTS scheduled_publish_at timestamptz;`,
 
   `CREATE TABLE IF NOT EXISTS vg_subreddit_rules (
     subreddit            text PRIMARY KEY,
