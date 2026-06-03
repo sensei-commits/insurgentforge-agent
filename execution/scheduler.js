@@ -185,6 +185,13 @@ async function runCronScheduledPublisher() {
 }
 
 function setupCrons() {
+  // Draft delivery: every 2 minutes — picks up any drafts created after bot started
+  const deliverTask = cron.schedule("*/2 * * * *", async () => {
+    try { await deliverPendingDrafts(); } catch (e) { console.error("[scheduler] deliver cron error:", e.message); }
+  }, { name: "vanguard_deliver" });
+  tasks.push(deliverTask);
+  console.log("[scheduler] DELIVER cron: every 2 minutes");
+
   // Deep run: Monday 9:00 AM local time
   const deepTask = cron.schedule("0 9 * * 1", runCronDeepResearch, { name: "vanguard_deep" });
   tasks.push(deepTask);
