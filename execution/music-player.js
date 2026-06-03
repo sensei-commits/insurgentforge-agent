@@ -1,226 +1,155 @@
-// TOOL: Music player — per-guild queue, YouTube streaming via play-dl + @discordjs/voice.
-const {
-  createAudioPlayer,
-  createAudioResource,
-  joinVoiceChannel,
-  AudioPlayerStatus,
-  VoiceConnectionStatus,
-  entersState,
-  NoSubscriberBehavior,
-} = require("@discordjs/voice");
-const ytdl = require("ytdl-core");
-const playdl = require("play-dl");
-const { spawn } = require("child_process");
-const ffmpegPath = require("ffmpeg-static");
+// TOOL: Music player using discord-player (battle-tested library for Discord music bots).
+const { useMainPlayer, useQueue } = require("discord-player");
 
-// Per-guild state map
-const queues = new Map();
-
-function getState(guildId) {
-  if (!queues.has(guildId)) {
-    const player = createAudioPlayer({
-      behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
-    });
-    const state = { connection: null, player, songs: [], current: null, currentResource: null, volume: 0.5 };
-    player.on(AudioPlayerStatus.Idle, () => {
-      console.log(`[music] player idle in ${guildId}, playing next`);
-      playNext(guildId);
-    });
-    player.on(AudioPlayerStatus.Playing, () => {
-      console.log(`[music] player now playing in ${guildId}`);
-    });
-    player.on("error", (err) => {
-      console.error(`[music] player error in ${guildId}:`, err.message, err);
-      playNext(guildId);
-    });
-    queues.set(guildId, state);
-  }
-  return queues.get(guildId);
-}
-
-async function playNext(guildId) {
-  const state = getState(guildId);
-  if (!state.songs.length) {
-    state.current = null;
-    return;
-  }
-  const song = state.songs.shift();
-  state.current = song;
+// Initialize player once
+function initPlayer() {
   try {
-    console.log(`[music] starting stream for "${song.title}" (${song.url})`);
-
-    // Use FFmpeg directly with YouTube URL - it handles auth and expiring URLs better
-    const ffmpegProcess = spawn(ffmpegPath, [
-      '-i', song.url,
-      '-acodec', 'libopus',
-      '-ar', '48000',
-      '-ac', '2',
-      '-f', 'opus',
-      '-b:a', '128k',
-      'pipe:1',
-    ], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-
-    console.log(`[music] FFmpeg started for "${song.title}"`);
-    const resource = createAudioResource(ffmpegProcess.stdout, {
-      inputType: 'opus',
-      inlineVolume: true,
-    });
-    resource.volume.setVolume(state.volume);
-    state.currentResource = resource;
-
-    // Handle FFmpeg errors
-    ffmpegProcess.stderr.on('data', (data) => {
-      const msg = data.toString().trim();
-      if (msg && !msg.includes('deprecated') && msg.length < 200) {
-        console.log(`[music] FFmpeg: ${msg}`);
-      }
-    });
-    ffmpegProcess.on('error', (err) => {
-      console.error(`[music] FFmpeg error:`, err.message);
-      playNext(guildId); // try next song
-    });
-    ffmpegProcess.on('exit', (code) => {
-      if (code && code !== 0) {
-        console.log(`[music] FFmpeg exited with code ${code}, playing next`);
-        playNext(guildId);
-      }
-    });
-
-    state.player.play(resource);
-    console.log(`[music] now playing "${song.title}", player status: ${state.player.state.status}`);
+    const player = useMainPlayer();
+    console.log("[music] discord-player initialized");
+    return player;
   } catch (err) {
-    console.error(`[music] stream error for "${song.title}":`, err.message);
-    playNext(guildId); // skip broken track and try next
+    console.error("[music] failed to init player:", err.message);
+    return null;
   }
 }
+
+const player = initPlayer();
 
 async function play(guildId, voiceChannel, query) {
-  const state = getState(guildId);
+  if (!player) throw new Error("Player not initialized");
 
-  // Join voice channel if not already connected
-  if (!state.connection) {
-    console.log(`[music] joining voice channel ${voiceChannel.id}`);
-    state.connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId,
-      adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-      selfMute: false,
-      selfDeaf: false,
-    });
-    console.log(`[music] connection created, status: ${state.connection.state.status}`);
-
-    state.connection.on(VoiceConnectionStatus.Ready, () => {
-      console.log(`[music] voice connection ready in ${guildId}`);
-    });
-    state.connection.on(VoiceConnectionStatus.Connecting, () => {
-      console.log(`[music] voice connection connecting in ${guildId}`);
-    });
-    state.connection.on(VoiceConnectionStatus.Signalling, () => {
-      console.log(`[music] voice connection signalling in ${guildId}`);
-    });
-
-    const subscription = state.connection.subscribe(state.player);
-    console.log(`[music] subscribed player to connection, subscription:`, subscription ? "OK" : "FAILED");
-
-    state.connection.on(VoiceConnectionStatus.Disconnected, async () => {
-      console.log(`[music] voice connection disconnected in ${guildId}`);
-      try {
-        await Promise.race([
-          entersState(state.connection, VoiceConnectionStatus.Signalling, 5_000),
-          entersState(state.connection, VoiceConnectionStatus.Connecting, 5_000),
-        ]);
-      } catch {
-        console.log(`[music] reconnect timeout, destroying connection in ${guildId}`);
-        state.connection.destroy();
-        queues.delete(guildId);
-      }
-    });
-  }
-
-  // Resolve YouTube URL or search query
-  let songInfo;
   try {
-    // Check if it's a YouTube URL
-    if (query.includes("youtube.com") || query.includes("youtu.be")) {
-      console.log(`[music] fetching video info for URL: ${query}`);
-      const info = await Promise.race([
-        ytdl.getInfo(query),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Video info lookup timed out")), 8_000)),
-      ]);
-      const duration = parseInt(info.videoDetails.lengthSeconds);
-      songInfo = {
-        title: info.videoDetails.title,
-        url: query,
-        duration: duration,
+    console.log(`[music] /play requested for: "${query}"`);
+
+    // Get or create queue for this guild
+    let queue = useQueue(guildId);
+    if (!queue) {
+      queue = player.nodes.create(guildId, {
+        metadata: { channel: voiceChannel },
+        leaveOnEmpty: true,
+        leaveOnEmptyCooldown: 300_000,
+      });
+      console.log(`[music] created queue for guild ${guildId}`);
+    }
+
+    // Connect if not already connected
+    if (!queue.connection) {
+      await queue.connect(voiceChannel);
+      console.log(`[music] connected to voice channel ${voiceChannel.id}`);
+    }
+
+    // Search and play
+    console.log(`[music] searching for: "${query}"`);
+    const results = await player.search(query, {
+      requestedBy: "bot",
+      searchEngine: "youtube",
+    });
+
+    if (!results || !results.tracks.length) {
+      throw new Error(`No results found for "${query}"`);
+    }
+
+    const track = results.tracks[0];
+    console.log(`[music] found track: "${track.title}" (${track.durationMS}ms)`);
+
+    const isPlaying = queue.isPlaying();
+    queue.addTrack(track);
+
+    if (!isPlaying) {
+      await queue.node.play();
+      console.log(`[music] started playback`);
+      return {
+        title: track.title,
+        duration: Math.floor(track.durationMS / 1000),
+        queued: false,
       };
-      console.log(`[music] video info resolved: "${songInfo.title}"`);
     } else {
-      console.log(`[music] searching YouTube for: "${query}"`);
-      const results = await Promise.race([
-        playdl.search(query, { limit: 1, source: { youtube: "video" } }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("YouTube search timed out")), 8_000)),
-      ]);
-      if (!results.length) throw new Error("No results found on YouTube");
-      songInfo = {
-        title: results[0].title,
-        url: results[0].url,
-        duration: results[0].durationInSec,
+      console.log(`[music] added to queue`);
+      return {
+        title: track.title,
+        duration: Math.floor(track.durationMS / 1000),
+        queued: true,
       };
-      console.log(`[music] search resolved: "${songInfo.title}"`);
     }
   } catch (err) {
-    throw new Error(`Could not find "${query}" — ${err.message}`);
+    console.error(`[music] play error:`, err.message);
+    throw err;
   }
-
-  console.log(`[music] queuing "${songInfo.title}", status: ${state.player.state.status}`);
-
-  state.songs.push(songInfo);
-
-  // Start playing if idle
-  if (state.player.state.status === AudioPlayerStatus.Idle) {
-    await playNext(guildId);
-    return { ...songInfo, queued: false };
-  }
-
-  return { ...songInfo, queued: true };
 }
 
 function skip(guildId) {
-  const state = getState(guildId);
-  if (!state.current) return false;
-  state.player.stop(); // triggers Idle event → playNext
-  return true;
+  try {
+    const queue = useQueue(guildId);
+    if (!queue || !queue.isPlaying()) return false;
+    queue.node.skip();
+    console.log(`[music] skipped`);
+    return true;
+  } catch (err) {
+    console.error(`[music] skip error:`, err.message);
+    return false;
+  }
 }
 
 function stop(guildId) {
-  const state = queues.get(guildId);
-  if (!state) return;
-  state.songs = [];
-  state.current = null;
-  state.player.stop(true);
-  if (state.connection) state.connection.destroy();
-  queues.delete(guildId);
+  try {
+    const queue = useQueue(guildId);
+    if (!queue) return;
+    queue.delete();
+    console.log(`[music] stopped and cleared queue`);
+  } catch (err) {
+    console.error(`[music] stop error:`, err.message);
+  }
 }
 
 function setVolume(guildId, percent) {
-  const state = getState(guildId);
-  state.volume = Math.max(0, Math.min(100, percent)) / 100;
-  if (state.currentResource?.volume) {
-    state.currentResource.volume.setVolume(state.volume);
+  try {
+    const queue = useQueue(guildId);
+    if (!queue) return 100;
+    const level = Math.max(0, Math.min(100, percent));
+    queue.node.setVolume(level);
+    console.log(`[music] volume set to ${level}%`);
+    return level;
+  } catch (err) {
+    console.error(`[music] setVolume error:`, err.message);
+    return 100;
   }
-  return Math.round(state.volume * 100);
 }
 
 function getNowPlaying(guildId) {
-  return getState(guildId).current || null;
+  try {
+    const queue = useQueue(guildId);
+    if (!queue || !queue.currentTrack) return null;
+    return {
+      title: queue.currentTrack.title,
+      duration: Math.floor(queue.currentTrack.durationMS / 1000),
+    };
+  } catch (err) {
+    console.error(`[music] getNowPlaying error:`, err.message);
+    return null;
+  }
 }
 
 function getQueueState(guildId) {
-  const state = getState(guildId);
-  return { current: state.current, upcoming: [...state.songs] };
+  try {
+    const queue = useQueue(guildId);
+    if (!queue) return { current: null, upcoming: [] };
+    const upcoming = queue.tracks.toArray().slice(0, 10);
+    return {
+      current: queue.currentTrack
+        ? {
+            title: queue.currentTrack.title,
+            duration: Math.floor(queue.currentTrack.durationMS / 1000),
+          }
+        : null,
+      upcoming: upcoming.map((t) => ({
+        title: t.title,
+        duration: Math.floor(t.durationMS / 1000),
+      })),
+    };
+  } catch (err) {
+    console.error(`[music] getQueueState error:`, err.message);
+    return { current: null, upcoming: [] };
+  }
 }
 
 function formatDuration(sec) {
