@@ -110,7 +110,7 @@ async function generate(trend, platform, spec, { avoidCliches = [] } = {}) {
       `"${trend.title}" — ${trend.summary || "(cost-cutting opportunity in the Discord-bot niche)"}\n` +
       `Cost-saving angle: ${trend.cost_saving_angle || "people overpay for bloated bots"}\n` +
       `CRITICAL: sound AUTHENTIC and HUMAN. Use casual punctuation (fewer periods, more flow). ` +
-      `Never say "lean custom build" — say it different every time. VARY your phrasing. ` +
+      `NO em-dashes (—). Keep it like texting a friend. Never say "lean custom build" — say it different every time. VARY your phrasing. ` +
       `This post should NOT sound like the last one you wrote.` +
       `${titleLine}${avoid}\nNo hashtags unless natural. No preamble.`,
     maxTokens: spec.title ? 700 : 220,
