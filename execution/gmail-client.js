@@ -16,38 +16,34 @@ let oauth2Client;
 async function getAuthClient() {
   if (oauth2Client && oauth2Client.credentials?.access_token) return oauth2Client;
 
-  if (!fs.existsSync(CREDS_FILE)) {
+  // Load credentials — from file or GMAIL_CREDENTIALS env var (Railway)
+  let credentials;
+  if (fs.existsSync(CREDS_FILE)) {
+    credentials = JSON.parse(fs.readFileSync(CREDS_FILE, "utf-8"));
+  } else if (process.env.GMAIL_CREDENTIALS) {
+    credentials = JSON.parse(process.env.GMAIL_CREDENTIALS);
+  } else {
     throw new Error(
-      `[gmail] Missing gmail-credentials.json. Download from Google Cloud Console and save as: ${CREDS_FILE}`
+      `[gmail] Missing gmail-credentials.json and GMAIL_CREDENTIALS env var not set.`
     );
   }
 
-  const credentials = JSON.parse(fs.readFileSync(CREDS_FILE, "utf-8"));
   const { client_id, client_secret, redirect_uris } = credentials.installed;
-
   oauth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
-  // Load saved token if it exists
+  // Load token — from file or GMAIL_TOKEN env var (Railway)
   if (fs.existsSync(TOKEN_FILE)) {
     const token = JSON.parse(fs.readFileSync(TOKEN_FILE, "utf-8"));
     oauth2Client.setCredentials(token);
     return oauth2Client;
   }
+  if (process.env.GMAIL_TOKEN) {
+    const token = JSON.parse(process.env.GMAIL_TOKEN);
+    oauth2Client.setCredentials(token);
+    return oauth2Client;
+  }
 
-  // First time: prompt for auth
-  console.log("[gmail] First run — Gmail auth required.");
-  const authUrl = oauth2Client.generateAuthUrl({
-    access_type: "offline",
-    scope: ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.modify"],
-  });
-
-  console.log(`[gmail] Open this URL in your browser:\n${authUrl}`);
-  console.log("[gmail] After authorizing, copy the code from the redirect URL.");
-  console.log("[gmail] Then set GMAIL_AUTH_CODE=<code> in .env and restart.");
-
-  throw new Error(
-    "Gmail not authorized yet. Follow the instructions above, then restart the scheduler."
-  );
+  throw new Error("Gmail not authorized yet. Set GMAIL_TOKEN env var on Railway.");
 }
 
 /**
