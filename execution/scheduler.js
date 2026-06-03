@@ -6,6 +6,7 @@ const cron = require("node-cron");
 const {
   Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
 } = require("discord.js");
+const { registerMusicCommands, handleMusicCommand, MUSIC_COMMAND_NAMES } = require("./music-commands");
 const { query, pool } = require("./db");
 const { publishDraft, rejectDraft } = require("./publish");
 
@@ -19,7 +20,9 @@ const OWNER_ID = process.env.DISCORD_OWNER_ID;
 const CHANNEL_ID = process.env.DISCORD_TRENDS_CHANNEL_ID;
 const ORCA = "🐋";
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+});
 const tasks = [];
 
 // ── HELPERS ──────────────────────────────────────────────────────────────
@@ -77,6 +80,7 @@ async function onReady() {
   console.log(`[scheduler] Listening for approvals on <#${CHANNEL_ID}>`);
   console.log(`[scheduler] Research cron jobs ready.`);
   try { await deliverPendingDrafts(); } catch (e) { console.error("[scheduler] deliver error:", e.message); }
+  await registerMusicCommands(client.user.id);
 }
 client.once("ready", onReady);
 client.once("clientReady", onReady);
@@ -84,6 +88,11 @@ client.once("clientReady", onReady);
 // ── BUTTON INTERACTIONS ──────────────────────────────────────────────────
 
 client.on("interactionCreate", async (interaction) => {
+  // Music slash commands
+  if (interaction.isChatInputCommand() && MUSIC_COMMAND_NAMES.has(interaction.commandName)) {
+    return handleMusicCommand(interaction);
+  }
+
   if (!interaction.isButton()) return;
   const [action, draftId] = interaction.customId.split(":");
   if (!["vg_approve", "vg_reject", "vg_schedule"].includes(action)) return;
