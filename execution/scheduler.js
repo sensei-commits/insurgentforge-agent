@@ -88,64 +88,77 @@ client.once("clientReady", onReady);
 // ── BUTTON INTERACTIONS ──────────────────────────────────────────────────
 
 client.on("interactionCreate", async (interaction) => {
-  // Music slash commands
-  if (interaction.isChatInputCommand() && MUSIC_COMMAND_NAMES.has(interaction.commandName)) {
-    return handleMusicCommand(interaction);
-  }
-
-  if (!interaction.isButton()) return;
-  const [action, draftId] = interaction.customId.split(":");
-  if (!["vg_approve", "vg_reject", "vg_schedule"].includes(action)) return;
-
-  if (interaction.user.id !== OWNER_ID) {
-    return interaction.reply({ content: "Only the owner can manage drafts.", ephemeral: true });
-  }
-
-  await interaction.deferUpdate();
-  const disabledRow1 = new ActionRowBuilder().addComponents(
-    ButtonBuilder.from(interaction.message.components[0].components[0]).setDisabled(true),
-    ButtonBuilder.from(interaction.message.components[0].components[1]).setDisabled(true),
-  );
-  const disabledRow2 = new ActionRowBuilder().addComponents(
-    ButtonBuilder.from(interaction.message.components[1].components[0]).setDisabled(true),
-  );
-
   try {
-    if (action === "vg_approve") {
-      const { url } = await publishDraft(draftId);
-      await interaction.message.edit({
-        content: `✅ Published by <@${OWNER_ID}> → ${url}`,
-        components: [disabledRow1, disabledRow2],
-        allowedMentions: { users: [] },
-      });
-      console.log(`[scheduler] published draft ${draftId} → ${url}`);
-    } else if (action === "vg_schedule") {
-      const tomorrow10am = new Date();
-      tomorrow10am.setDate(tomorrow10am.getDate() + 1);
-      tomorrow10am.setHours(10, 0, 0, 0);
-      const estOffset = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-      const estTime = new Date(estOffset);
-      const diffMs = estTime.getTime() - new Date().getTime();
-      tomorrow10am.setTime(tomorrow10am.getTime() - diffMs);
-      await query(`UPDATE vg_drafts SET scheduled_publish_at=$1 WHERE id=$2`, [tomorrow10am, draftId]);
-      await interaction.message.edit({
-        content: `📅 Scheduled by <@${OWNER_ID}> to publish tomorrow at 10:00 AM EST`,
-        components: [disabledRow1, disabledRow2],
-        allowedMentions: { users: [] },
-      });
-      console.log(`[scheduler] scheduled draft ${draftId} for ${tomorrow10am.toISOString()}`);
-    } else {
-      await rejectDraft(draftId);
-      await interaction.message.edit({
-        content: `❌ Rejected by <@${OWNER_ID}>. Nothing was posted.`,
-        components: [disabledRow1, disabledRow2],
-        allowedMentions: { users: [] },
-      });
-      console.log(`[scheduler] rejected draft ${draftId}`);
+    // Music slash commands
+    if (interaction.isChatInputCommand() && MUSIC_COMMAND_NAMES.has(interaction.commandName)) {
+      return await handleMusicCommand(interaction);
+    }
+
+    if (!interaction.isButton()) return;
+    const [action, draftId] = interaction.customId.split(":");
+    if (!["vg_approve", "vg_reject", "vg_schedule"].includes(action)) return;
+
+    if (interaction.user.id !== OWNER_ID) {
+      return interaction.reply({ content: "Only the owner can manage drafts.", ephemeral: true });
+    }
+
+    await interaction.deferUpdate();
+    const disabledRow1 = new ActionRowBuilder().addComponents(
+      ButtonBuilder.from(interaction.message.components[0].components[0]).setDisabled(true),
+      ButtonBuilder.from(interaction.message.components[0].components[1]).setDisabled(true),
+    );
+    const disabledRow2 = new ActionRowBuilder().addComponents(
+      ButtonBuilder.from(interaction.message.components[1].components[0]).setDisabled(true),
+    );
+
+    try {
+      if (action === "vg_approve") {
+        const { url } = await publishDraft(draftId);
+        await interaction.message.edit({
+          content: `✅ Published by <@${OWNER_ID}> → ${url}`,
+          components: [disabledRow1, disabledRow2],
+          allowedMentions: { users: [] },
+        });
+        console.log(`[scheduler] published draft ${draftId} → ${url}`);
+      } else if (action === "vg_schedule") {
+        const tomorrow10am = new Date();
+        tomorrow10am.setDate(tomorrow10am.getDate() + 1);
+        tomorrow10am.setHours(10, 0, 0, 0);
+        const estOffset = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+        const estTime = new Date(estOffset);
+        const diffMs = estTime.getTime() - new Date().getTime();
+        tomorrow10am.setTime(tomorrow10am.getTime() - diffMs);
+        await query(`UPDATE vg_drafts SET scheduled_publish_at=$1 WHERE id=$2`, [tomorrow10am, draftId]);
+        await interaction.message.edit({
+          content: `📅 Scheduled by <@${OWNER_ID}> to publish tomorrow at 10:00 AM EST`,
+          components: [disabledRow1, disabledRow2],
+          allowedMentions: { users: [] },
+        });
+        console.log(`[scheduler] scheduled draft ${draftId} for ${tomorrow10am.toISOString()}`);
+      } else {
+        await rejectDraft(draftId);
+        await interaction.message.edit({
+          content: `❌ Rejected by <@${OWNER_ID}>. Nothing was posted.`,
+          components: [disabledRow1, disabledRow2],
+          allowedMentions: { users: [] },
+        });
+        console.log(`[scheduler] rejected draft ${draftId}`);
+      }
+    } catch (err) {
+      await interaction.followUp({ content: `⚠️ Action failed: ${err.message}`, ephemeral: true });
+      console.error(`[scheduler] action error on ${draftId}:`, err.message);
     }
   } catch (err) {
-    await interaction.followUp({ content: `⚠️ Action failed: ${err.message}`, ephemeral: true });
-    console.error(`[scheduler] action error on ${draftId}:`, err.message);
+    console.error(`[scheduler] interaction error:`, err.message);
+    try {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({ content: `⚠️ Error: ${err.message}`, ephemeral: true });
+      } else {
+        await interaction.reply({ content: `⚠️ Error: ${err.message}`, ephemeral: true });
+      }
+    } catch (e) {
+      console.error(`[scheduler] could not send error response:`, e.message);
+    }
   }
 });
 

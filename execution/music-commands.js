@@ -53,6 +53,7 @@ async function registerMusicCommands(clientId) {
 // ── Handler ──────────────────────────────────────────────────────────────────
 async function handleMusicCommand(interaction) {
   const { commandName, member, guild } = interaction;
+  console.log(`[music] handling command: ${commandName}`);
 
   const voiceChannel = member?.voice?.channel;
   const needsVoice = ["play", "stop", "skip", "volume"];
@@ -64,6 +65,7 @@ async function handleMusicCommand(interaction) {
     });
   }
 
+  console.log(`[music] deferring reply for ${commandName}`);
   await interaction.deferReply();
 
   try {
@@ -72,16 +74,24 @@ async function handleMusicCommand(interaction) {
       console.log(`[music] /play requested: "${query}"`);
 
       // Timeout after 12 seconds so Discord doesn't hang
-      const song = await Promise.race([
-        play(guild.id, voiceChannel, query),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timed out searching YouTube — try again or use a direct URL")), 12_000)),
-      ]);
+      let song;
+      try {
+        song = await Promise.race([
+          play(guild.id, voiceChannel, query),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timed out searching YouTube — try again or use a direct URL")), 12_000)),
+        ]);
+      } catch (playErr) {
+        console.error(`[music] play error:`, playErr.message);
+        return interaction.editReply(`⚠️ ${playErr.message}`);
+      }
 
+      console.log(`[music] response sending for: "${song.title}"`);
       const embed = new EmbedBuilder()
         .setColor(0x1db954)
         .setTitle(song.queued ? "📋 Added to queue" : "🎵 Now playing")
         .setDescription(`**${song.title}**`)
         .addFields({ name: "Duration", value: formatDuration(song.duration), inline: true });
+      console.log(`[music] editReply called`);
       return interaction.editReply({ embeds: [embed] });
     }
 

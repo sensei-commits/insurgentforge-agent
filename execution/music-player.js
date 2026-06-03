@@ -38,7 +38,12 @@ async function playNext(guildId) {
   const song = state.songs.shift();
   state.current = song;
   try {
-    const stream = await playdl.stream(song.url);
+    console.log(`[music] starting stream for "${song.title}" (${song.url})`);
+    const stream = await Promise.race([
+      playdl.stream(song.url),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Stream request timed out")), 10_000)),
+    ]);
+    console.log(`[music] stream acquired for "${song.title}"`);
     const resource = createAudioResource(stream.stream, {
       inputType: stream.type,
       inlineVolume: true,
@@ -46,6 +51,7 @@ async function playNext(guildId) {
     resource.volume.setVolume(state.volume);
     state.currentResource = resource;
     state.player.play(resource);
+    console.log(`[music] now playing "${song.title}"`);
   } catch (err) {
     console.error(`[music] stream error for "${song.title}":`, err.message);
     playNext(guildId); // skip broken track and try next
@@ -57,12 +63,14 @@ async function play(guildId, voiceChannel, query) {
 
   // Join voice channel if not already connected
   if (!state.connection) {
+    console.log(`[music] joining voice channel ${voiceChannel.id}`);
     state.connection = joinVoiceChannel({
       channelId: voiceChannel.id,
       guildId,
       adapterCreator: voiceChannel.guild.voiceAdapterCreator,
     });
     state.connection.subscribe(state.player);
+    console.log(`[music] subscribed player to connection`);
     state.connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
         await Promise.race([
@@ -81,7 +89,10 @@ async function play(guildId, voiceChannel, query) {
   try {
     if (playdl.yt_validate(query) === "video") {
       console.log(`[music] fetching video info for URL: ${query}`);
-      const info = await playdl.video_info(query);
+      const info = await Promise.race([
+        playdl.video_info(query),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Video info lookup timed out")), 8_000)),
+      ]);
       songInfo = {
         title: info.video_details.title,
         url: query,
@@ -90,7 +101,10 @@ async function play(guildId, voiceChannel, query) {
       console.log(`[music] video info resolved: "${songInfo.title}"`);
     } else {
       console.log(`[music] searching YouTube for: "${query}"`);
-      const results = await playdl.search(query, { limit: 1, source: { youtube: "video" } });
+      const results = await Promise.race([
+        playdl.search(query, { limit: 1, source: { youtube: "video" } }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("YouTube search timed out")), 8_000)),
+      ]);
       if (!results.length) throw new Error("No results found on YouTube");
       songInfo = {
         title: results[0].title,
