@@ -14,6 +14,8 @@ const { runDeepResearch } = require("./research");
 // Import email monitoring and scheduled publishing
 const { monitorEmails, deliverInteractions } = require("./email-monitor");
 const { publishScheduledPosts } = require("./scheduled-publisher");
+// Import content generator
+const { generateDailyContent } = require("./content-generator");
 
 const OWNER_ID = process.env.DISCORD_OWNER_ID;
 const CHANNEL_ID = process.env.DISCORD_TRENDS_CHANNEL_ID;
@@ -39,6 +41,29 @@ function draftEmbed(d) {
     })
     .setFooter({ text: `InsurgentForge • Vanguard • draft ${String(d.id).slice(0, 8)}` })
     .setTimestamp(new Date());
+}
+
+function contentDraftEmbed(d) {
+  const preview = `**${d.title}**\n\n📱 Platforms: Reddit, Bluesky, Mastodon, Dev.to\n📋 Twitter & LinkedIn drafts included\n\nTopic: ${d.topic}`;
+  return new EmbedBuilder()
+    .setTitle("✨ Daily Content Ready for Approval")
+    .setDescription(preview)
+    .setColor(0x00d4ff)
+    .addFields(
+      { name: "Reddit", value: d.reddit.slice(0, 500) + (d.reddit.length > 500 ? "..." : ""), inline: false },
+      { name: "Bluesky", value: d.bluesky.slice(0, 100) + (d.bluesky.length > 100 ? "..." : ""), inline: false }
+    )
+    .setFooter({ text: `InsurgentForge • Content ${String(d.id).slice(0, 8)}` })
+    .setTimestamp(new Date());
+}
+
+function contentButtons(id) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`vc_approve:${id}`).setLabel("Approve & Queue").setEmoji("✅").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`vc_reject:${id}`).setLabel("Reject").setEmoji("❌").setStyle(ButtonStyle.Danger),
+    ),
+  ];
 }
 
 function buttons(id) {
@@ -69,6 +94,23 @@ async function deliverPendingDrafts() {
   }
 }
 
+async function deliverContentDrafts() {
+  const channel = await client.channels.fetch(CHANNEL_ID);
+  const { rows } = await query(
+    `SELECT * FROM vg_content_drafts WHERE status='pending_approval' AND delivered_at IS NULL ORDER BY created_at ASC`
+  );
+  if (!rows.length) return;
+  for (const d of rows) {
+    await channel.send({
+      content: `<@${OWNER_ID}> daily content is ready:`,
+      embeds: [contentDraftEmbed(d)],
+      components: contentButtons(d.id),
+      allowedMentions: { users: [OWNER_ID] },
+    });
+    await query(`UPDATE vg_content_drafts SET delivered_at=now() WHERE id=$1`, [d.id]);
+  }
+}
+
 // ── BOT READY ────────────────────────────────────────────────────────────
 
 let started = false;
@@ -90,10 +132,38 @@ client.on("interactionCreate", async (interaction) => {
   try {
     if (!interaction.isButton()) return;
     const [action, draftId] = interaction.customId.split(":");
-    if (!["vg_approve", "vg_reject", "vg_schedule"].includes(action)) return;
+    if (!["vg_approve", "vg_reject", "vg_schedule", "vc_approve", "vc_reject"].includes(action)) return;
 
     if (interaction.user.id !== OWNER_ID) {
       return interaction.reply({ content: "Only the owner can manage drafts.", ephemeral: true });
+    }
+
+    // Handle content draft buttons
+    if (action.startsWith("vc_")) {
+      await interaction.deferUpdate();
+      const disabledRow = new ActionRowBuilder().addComponents(
+        ButtonBuilder.from(interaction.message.components[0].components[0]).setDisabled(true),
+        ButtonBuilder.from(interaction.message.components[0].components[1]).setDisabled(true),
+      );
+
+      if (action === "vc_approve") {
+        await query(`UPDATE vg_content_drafts SET status='approved', approved_at=now() WHERE id=$1`, [draftId]);
+        await interaction.message.edit({
+          content: `✅ Approved by <@${OWNER_ID}> — queued for posting`,
+          components: [disabledRow],
+          allowedMentions: { users: [] },
+        });
+        console.log(`[scheduler] approved content draft ${draftId}`);
+      } else if (action === "vc_reject") {
+        await query(`UPDATE vg_content_drafts SET status='rejected', rejected_reason='Owner rejected' WHERE id=$1`, [draftId]);
+        await interaction.message.edit({
+          content: `❌ Rejected by <@${OWNER_ID}>`,
+          components: [disabledRow],
+          allowedMentions: { users: [] },
+        });
+        console.log(`[scheduler] rejected content draft ${draftId}`);
+      }
+      return;
     }
 
     await interaction.deferUpdate();
@@ -207,10 +277,24 @@ async function runCronScheduledPublisher() {
   }
 }
 
+async function runCronDailyContent() {
+  const ts = new Date().toISOString();
+  console.log(`${ts} [scheduler] ✨ Generating daily content...`);
+  try {
+    const draft = await generateDailyContent();
+    console.log(`${new Date().toISOString()} [scheduler] ✅ generated content draft: "${draft.title}"`);
+  } catch (e) {
+    console.error(`${new Date().toISOString()} [scheduler] ❌ content generation failed: ${e.message}`);
+  }
+}
+
 function setupCrons() {
   // Draft delivery: every 2 minutes — picks up any drafts created after bot started
   const deliverTask = cron.schedule("*/2 * * * *", async () => {
-    try { await deliverPendingDrafts(); } catch (e) { console.error("[scheduler] deliver cron error:", e.message); }
+    try {
+      await deliverPendingDrafts();
+      await deliverContentDrafts();
+    } catch (e) { console.error("[scheduler] deliver cron error:", e.message); }
   }, { name: "vanguard_deliver" });
   tasks.push(deliverTask);
   console.log("[scheduler] DELIVER cron: every 2 minutes");
@@ -234,12 +318,46 @@ function setupCrons() {
   const publishTask = cron.schedule("*/5 * * * *", runCronScheduledPublisher, { name: "vanguard_publish" });
   tasks.push(publishTask);
   console.log("[scheduler] SCHEDULED publisher: every 5 minutes");
+
+  // Daily content generation: 9:30 AM local time
+  const contentTask = cron.schedule("30 9 * * *", runCronDailyContent, { name: "vanguard_content" });
+  tasks.push(contentTask);
+  console.log("[scheduler] DAILY content: 9:30 AM (local)");
 }
 
 // ── LIFECYCLE ────────────────────────────────────────────────────────────
 
+async function ensureTablesExist() {
+  try {
+    // Create content_drafts table if it doesn't exist
+    await query(`
+      CREATE TABLE IF NOT EXISTS vg_content_drafts (
+        id SERIAL PRIMARY KEY,
+        topic TEXT,
+        title TEXT NOT NULL,
+        reddit TEXT,
+        bluesky TEXT,
+        mastodon TEXT,
+        devto TEXT,
+        twitter_draft TEXT,
+        linkedin_draft TEXT,
+        status VARCHAR(50) DEFAULT 'pending_approval',
+        rejected_reason TEXT,
+        created_at TIMESTAMP DEFAULT now(),
+        delivered_at TIMESTAMP,
+        approved_at TIMESTAMP,
+        published_at TIMESTAMP
+      )
+    `);
+    console.log("[scheduler] ✅ content_drafts table ready");
+  } catch (e) {
+    console.error("[scheduler] table creation error:", e.message);
+  }
+}
+
 function startup() {
   console.log(`${new Date().toISOString()} [scheduler] 🚀 Vanguard starting up...`);
+  ensureTablesExist();
   setupCrons();
   client.login(process.env.DISCORD_TOKEN);
 }
