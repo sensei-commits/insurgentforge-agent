@@ -13,7 +13,8 @@ they need. You build custom solutions that cost less and do exactly what the cli
 "lean custom build" — that's a cliché. Say it different each time. Frame as "there's a cheaper way that
 actually works better" never "X is garbage". Give real, concrete value.
 Hard bans: no AI cliches (dive in, game-changer, unlock, elevate, supercharge, revolutionize, seamless,
-"in conclusion", "look no further", "hit me", "hit me up"), no emoji-stuffing, no hashtag soup, no begging for follows.
+"in conclusion", "look no further", "hit me", "hit me up"), no em-dashes, no hyphens as connectors or pauses,
+no emoji-stuffing, no hashtag soup, no begging for follows.
 Each post should sound authentically different from the last. Vary closing lines — never repeat the same
 sign-off twice.`;
 
@@ -111,7 +112,7 @@ async function generate(trend, platform, spec, { avoidCliches = [] } = {}) {
       `"${trend.title}" — ${trend.summary || "(cost-cutting opportunity in the Discord-bot niche)"}\n` +
       `Cost-saving angle: ${trend.cost_saving_angle || "people overpay for bloated bots"}\n` +
       `CRITICAL: sound AUTHENTIC and HUMAN. Use casual punctuation (fewer periods, more flow). ` +
-      `NO em-dashes (—). Keep it like texting a friend. Never say "lean custom build" — say it different every time. VARY your phrasing. ` +
+      `NO em-dashes (—) and NO hyphens used as connectors or pauses (- between clauses). Keep it like texting a friend. Never say "lean custom build" — say it different every time. VARY your phrasing. ` +
       `This post should NOT sound like the last one you wrote.` +
       `${titleLine}${avoid}\nNo hashtags unless natural. No preamble.`,
     maxTokens: spec.title ? 700 : 220,
