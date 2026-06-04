@@ -17,6 +17,10 @@ async function initializeSources() {
       github: require("./source-github").scrapeGitHub,
       hackernews: require("./source-hackernews").scrapeHackerNews,
       devto: require("./source-devto").scrapeDevTo,
+      twitter: require("./source-twitter").scrapeTwitter,
+      upwork: require("./source-upwork").scrapeUpwork,
+      fiverr: require("./source-fiverr").scrapeFiverr,
+      indiehackers: require("./source-indiehackers").scrapeIndieHackers,
     };
     console.log("[lead-miner] sources initialized");
   } catch (err) {
@@ -150,7 +154,8 @@ async function mineSources() {
     await initializeSources();
 
     const newLeads = [];
-    const sources = ["reddit", "github", "hackernews", "devto"];
+    // Priority order: customer-direct sources first (job boards, tweets, discussions)
+    const sources = ["upwork", "fiverr", "twitter", "indiehackers", "reddit", "github", "hackernews", "devto"];
 
     for (const source of sources) {
       if (!sourceFunctions[source]) {
