@@ -1,84 +1,70 @@
-// SOURCE: Twitter scraper — find people complaining about bots, costs, and automation needs
-// Targets: tweets about Discord bot costs, complaints, "looking for" messages
+// SOURCE: Twitter scraper — find people complaining about bots, costs, pain points
+// Web scraping approach targeting customer pain signals
 
 async function scrapeTwitter() {
   try {
     const tweets = [];
 
-    // Twitter search queries targeting pain points and customer needs
+    // Twitter search queries targeting CUSTOMER PAIN POINTS
     const searchQueries = [
-      "discord bot too expensive", // Cost pain
-      "discord bot pricing complaint", // Cost complaints
-      "looking for discord bot developer", // Direct need
-      "need help discord bot", // Help request
-      "discord bot broken alternatives", // Current solution issues
-      "MEE6 alternative cheaper", // Specific competitor pain
-      "Dyno too costly", // Specific competitor pain
-      "custom discord bot hire", // Direct service request
+      "discord bot too expensive",
+      "looking for discord bot developer",
+      "need help with discord bot",
+      "discord bot alternative",
+      "MEE6 too expensive",
+      "paid bot service",
+      "custom discord bot hire",
     ];
 
     for (const query of searchQueries) {
       try {
         console.log(`[twitter] searching: "${query}"...`);
 
-        // Twitter's advanced search URL format (public, no API key needed)
-        // Using Twitter's public search which returns JSON
-        const searchUrl = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(
+        // Use Twitter search endpoint (public search, no auth required)
+        const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(
           query
-        )}&max_results=100&tweet.fields=public_metrics,created_at&user.fields=username,created_at`;
+        )}&f=live`;
 
-        // Check if we have Twitter API key for authenticated requests
-        const headers = {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        };
-
-        if (process.env.TWITTER_BEARER_TOKEN) {
-          headers["Authorization"] = `Bearer ${process.env.TWITTER_BEARER_TOKEN}`;
-        }
-
-        const response = await fetch(searchUrl, { headers });
-
-        if (response.status === 429) {
-          console.log("[twitter] rate limited, skipping remaining queries");
-          break;
-        }
+        const response = await fetch(searchUrl, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        });
 
         if (!response.ok) {
-          console.log(`[twitter] query "${query}" returned ${response.status}`);
+          console.log(`[twitter] returned ${response.status}`);
           continue;
         }
 
-        const data = await response.json();
+        const html = await response.text();
 
-        if (!data.data || !Array.isArray(data.data)) {
-          continue;
-        }
+        // Extract tweets from HTML
+        // Look for tweet text and links
+        const tweetRegex = /data-testid="tweet"[^>]*>[\s\S]*?<a[^>]*href="\/[^/]+\/status\/([0-9]+)"[^>]*>[^<]*<\/a>[\s\S]*?<div[^>]*dir="auto"[^>]*>([^<]+)<\/div>/gi;
 
-        // Extract relevant tweets
-        for (const tweet of data.data) {
-          // Filter for engagement (retweets, likes, replies = real signals)
-          const engagement =
-            (tweet.public_metrics?.retweet_count || 0) +
-            (tweet.public_metrics?.like_count || 0) +
-            (tweet.public_metrics?.reply_count || 0);
+        let match;
+        let count = 0;
+        while ((match = tweetRegex.exec(html)) !== null && count < 10) {
+          const tweetId = match[1];
+          const tweetText = match[2];
 
-          if (engagement >= 1) {
-            // At least 1 interaction = real signal
+          if (tweetText.length > 20) {
             tweets.push({
-              text: tweet.text,
-              url: `https://twitter.com/i/web/status/${tweet.id}`,
-              author: tweet.author_id || "twitter_user",
-              score: engagement,
-              timestamp: new Date(tweet.created_at).getTime() / 1000,
+              text: tweetText,
+              url: `https://twitter.com/i/web/status/${tweetId}`,
+              author: "twitter_user",
+              score: 10, // Default engagement score
+              timestamp: Math.floor(Date.now() / 1000),
             });
+            count++;
           }
         }
 
-        // Rate limit: 1 second between requests
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // Rate limit to avoid blocking
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (err) {
-        console.error(`[twitter] query "${query}" error:`, err.message);
+        console.error(`[twitter] search error:`, err.message);
         continue;
       }
     }
