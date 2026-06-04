@@ -9,26 +9,6 @@ const SUBREDDITS = [
   "Python",              // Python Discord bot builders
 ];
 
-function fetchReddit(url) {
-  return new Promise((resolve, reject) => {
-    https
-      .get(url, { headers: { "User-Agent": "InsurgentForge/1.0" } }, (res) => {
-        let data = "";
-        res.on("data", (chunk) => {
-          data += chunk;
-        });
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(data));
-          } catch (e) {
-            reject(e);
-          }
-        });
-      })
-      .on("error", reject);
-  });
-}
-
 async function scrapeReddit() {
   try {
     const posts = [];
@@ -37,9 +17,21 @@ async function scrapeReddit() {
       try {
         console.log(`[reddit] scraping r/${subreddit}...`);
 
-        // Fetch latest posts (past 24 hours)
+        // Fetch latest posts (past 24 hours) with proper User-Agent
         const url = `https://www.reddit.com/r/${subreddit}/new.json?limit=50&t=day`;
-        const response = await fetchReddit(url);
+        const response = await new Promise((resolve, reject) => {
+          https.get(url, { headers: { "User-Agent": "InsurgentForge/1.0 (by iNFAMOUSII8)" } }, (res) => {
+            let data = "";
+            res.on("data", (chunk) => (data += chunk));
+            res.on("end", () => {
+              try {
+                resolve(JSON.parse(data));
+              } catch (e) {
+                reject(e);
+              }
+            });
+          }).on("error", reject);
+        });
 
         if (!response.data || !response.data.children) continue;
 
