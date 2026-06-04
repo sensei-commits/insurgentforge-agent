@@ -27,7 +27,7 @@ async function scrapeHackerNews() {
 
     // Get recent stories
     console.log("[hn] fetching top stories...");
-    const topStories = await fetchHN("https://hacker-news.firebaseio.com/v0/topstories.json?limitToFirst=100");
+    const topStories = await fetchHN("https://hacker-news.firebaseio.com/v0/topstories.json");
 
     if (!topStories) return [];
 
