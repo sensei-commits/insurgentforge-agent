@@ -58,10 +58,26 @@ Qualify if: they mention bot features, problems with current solutions, cost con
       const data = JSON.parse(content);
       return data.isQualified ? data : null;
     } catch (e) {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      // Try to extract JSON from markdown code blocks
+      let jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {
-        const data = JSON.parse(jsonMatch[0]);
-        return data.isQualified ? data : null;
+        try {
+          const data = JSON.parse(jsonMatch[1]);
+          return data.isQualified ? data : null;
+        } catch (e2) {
+          // Fall through to regex extraction
+        }
+      }
+
+      // Try raw JSON extraction
+      jsonMatch = content.match(/\{[\s\S]*?\n\}/);
+      if (jsonMatch) {
+        try {
+          const data = JSON.parse(jsonMatch[0]);
+          return data.isQualified ? data : null;
+        } catch (e3) {
+          // Give up
+        }
       }
       return null;
     }
