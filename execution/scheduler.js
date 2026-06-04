@@ -6,6 +6,7 @@ const { Client, GatewayIntentBits } = require("discord.js");
 const { query, pool } = require("./db");
 const { mineSources, getTopLeads } = require("./lead-miner");
 const { deliverLeadsToDiscord, deliverDailyDigest } = require("./lead-deliverer");
+const { mineVisibilityOpportunities } = require("./visibility-miner");
 
 const OWNER_ID = process.env.DISCORD_OWNER_ID;
 const CHANNEL_ID = process.env.DISCORD_TRENDS_CHANNEL_ID;
@@ -59,11 +60,90 @@ async function runCronDailyDigest() {
   }
 }
 
+async function runCronVisibilityMining() {
+  const ts = new Date().toISOString();
+  console.log(`${ts} [scheduler] 👁️ Mining visibility opportunities...`);
+  try {
+    const opportunities = await mineVisibilityOpportunities();
+    if (opportunities.length > 0) {
+      await deliverVisibilityOpportunitiesToDiscord(
+        client,
+        CHANNEL_ID,
+        OWNER_ID,
+        opportunities
+      );
+      console.log(
+        `${new Date().toISOString()} [scheduler] ✅ sent ${opportunities.length} visibility opportunities`
+      );
+    } else {
+      console.log(`${new Date().toISOString()} [scheduler] ⏳ no opportunities`);
+    }
+  } catch (e) {
+    console.error(
+      `${new Date().toISOString()} [scheduler] ❌ visibility mining failed: ${e.message}`
+    );
+  }
+}
+
+async function deliverVisibilityOpportunitiesToDiscord(
+  client,
+  channelId,
+  ownerId,
+  opportunities
+) {
+  try {
+    const { EmbedBuilder } = require("discord.js");
+
+    if (!opportunities.length) return;
+
+    const channel = await client.channels.fetch(channelId);
+
+    // Send as a batch summary
+    const embed = new EmbedBuilder()
+      .setTitle(`👁️ VISIBILITY OPPORTUNITIES - Answer These To Build Authority`)
+      .setColor(0x0099ff)
+      .setDescription(
+        `Found ${opportunities.length} unanswered questions where you can position yourself as an expert.`
+      );
+
+    const opps = opportunities.slice(0, 10);
+    let description = opps
+      .map(
+        (opp, i) =>
+          `**${i + 1}. ${opp.text.slice(0, 70)}${opp.text.length > 70 ? "..." : ""}**\n` +
+          `Source: ${opp.source.toUpperCase()} | Type: ${opp.type}\n` +
+          `Priority: ${opp.priority.toUpperCase()}\n` +
+          `[View Question](${opp.url})`
+      )
+      .join("\n\n");
+
+    embed.setDescription(description);
+    embed
+      .setFooter({ text: `${opportunities.length} total | Answer publicly to build your name` })
+      .setTimestamp();
+
+    await channel.send({
+      content: `<@${ownerId}> 👁️ **BUILD VISIBILITY - Answer These Questions**`,
+      embeds: [embed],
+      allowedMentions: { users: [ownerId] },
+    });
+  } catch (err) {
+    console.error("[scheduler] visibility delivery error:", err.message);
+  }
+}
+
 function setupCrons() {
-  // Lead mining: every 2 hours (Reddit, GitHub, HN, Dev.to)
+  // Lead mining: every 2 hours (Reddit when unblocked)
   const miningTask = cron.schedule("0 */2 * * *", runCronLeadMining, { name: "vanguard_mining" });
   tasks.push(miningTask);
   console.log("[scheduler] LEAD MINING: every 2 hours");
+
+  // Visibility mining: every 4 hours (Q&A sites - Stack Overflow, Quora)
+  const visibilityTask = cron.schedule("0 */4 * * *", runCronVisibilityMining, {
+    name: "vanguard_visibility",
+  });
+  tasks.push(visibilityTask);
+  console.log("[scheduler] VISIBILITY MINING: every 4 hours");
 
   // Daily digest: 9:00 AM (top 10 leads from past 24h)
   const digestTask = cron.schedule("0 9 * * *", runCronDailyDigest, { name: "vanguard_digest" });
