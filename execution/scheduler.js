@@ -14,9 +14,12 @@ const { runDeepResearch } = require("./research");
 // Import email monitoring and scheduled publishing
 const { monitorEmails, deliverInteractions } = require("./email-monitor");
 const { publishScheduledPosts } = require("./scheduled-publisher");
-// Import content generator and auto-publisher
+// Import content generator, auto-publisher, and intelligence tools
 const { generateDailyContent } = require("./content-generator");
 const { publishDraftToAll } = require("./auto-publisher");
+const { analyzeIncomingEmails } = require("./lead-scorer");
+const { trackCompetitors } = require("./competitor-tracker");
+const { generateAnalyticsReport, getLeadInsights, getDailyStats } = require("./analytics-engine");
 
 const OWNER_ID = process.env.DISCORD_OWNER_ID;
 const CHANNEL_ID = process.env.DISCORD_TRENDS_CHANNEL_ID;
@@ -311,6 +314,106 @@ async function runCronDailyContent() {
   }
 }
 
+async function runCronLeadScoring() {
+  const ts = new Date().toISOString();
+  console.log(`${ts} [scheduler] 🎯 Scoring incoming leads...`);
+  try {
+    const leads = await analyzeIncomingEmails();
+    if (leads.length > 0) {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      const embed = new EmbedBuilder()
+        .setTitle(`🎯 ${leads.length} High-Value Lead(s) Detected`)
+        .setColor(0x00ff00)
+        .setDescription(
+          leads
+            .map(
+              (l) =>
+                `**${l.from}** (Score: ${l.score})\n📌 ${l.problem}\n⏰ ${l.urgency}`
+            )
+            .join("\n\n")
+        )
+        .setFooter({ text: "InsurgentForge • Lead Intelligence" })
+        .setTimestamp();
+      await channel.send({
+        content: `<@${OWNER_ID}> 🎯 check these leads!`,
+        embeds: [embed],
+        allowedMentions: { users: [OWNER_ID] },
+      });
+    }
+    console.log(`${new Date().toISOString()} [scheduler] ✅ lead scoring complete: ${leads.length} high-value leads`);
+  } catch (e) {
+    console.error(`${new Date().toISOString()} [scheduler] ❌ lead scoring failed: ${e.message}`);
+  }
+}
+
+async function runCronCompetitorTracking() {
+  const ts = new Date().toISOString();
+  console.log(`${ts} [scheduler] 🔍 Tracking competitors...`);
+  try {
+    const alerts = await trackCompetitors();
+    if (alerts.length > 0) {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      for (const alert of alerts) {
+        const embed = new EmbedBuilder()
+          .setTitle(`🚨 ${alert.type.toUpperCase()}: ${alert.title}`)
+          .setColor(alert.type === "threat" ? 0xff0000 : 0xffaa00)
+          .addFields(
+            { name: "Source", value: alert.source, inline: true },
+            { name: "Confidence", value: `${alert.confidence}%`, inline: true },
+            { name: "Insight", value: alert.insight },
+            { name: "Action", value: alert.action }
+          )
+          .setFooter({ text: "InsurgentForge • Market Intelligence" })
+          .setTimestamp();
+        await channel.send({
+          content: `<@${OWNER_ID}> market alert!`,
+          embeds: [embed],
+          allowedMentions: { users: [OWNER_ID] },
+        });
+      }
+    }
+    console.log(`${new Date().toISOString()} [scheduler] ✅ competitor tracking complete: ${alerts.length} alerts`);
+  } catch (e) {
+    console.error(`${new Date().toISOString()} [scheduler] ❌ competitor tracking failed: ${e.message}`);
+  }
+}
+
+async function runCronWeeklyAnalytics() {
+  const ts = new Date().toISOString();
+  console.log(`${ts} [scheduler] 📊 Generating analytics report...`);
+  try {
+    const report = await generateAnalyticsReport();
+    const leads = await getLeadInsights();
+    const stats = await getDailyStats();
+
+    if (report && leads) {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      const embed = new EmbedBuilder()
+        .setTitle("📊 Weekly Performance Report")
+        .setColor(0x0099ff)
+        .addFields(
+          { name: "Content Published", value: `${report.total_published}`, inline: true },
+          { name: "Approval Rate", value: `${stats.approval_rate}%`, inline: true },
+          { name: "Top Topics", value: report.top_topics.join(", ") || "N/A" },
+          { name: "Best Posting Hour", value: report.best_posting_hour },
+          { name: "High-Value Leads", value: `${leads.high_value_leads}`, inline: true },
+          { name: "Avg Lead Score", value: `${leads.avg_score}`, inline: true },
+          { name: "Platform Performance", value: `🦋 Bluesky: ${report.platforms.bluesky} | 🐘 Mastodon: ${report.platforms.mastodon} | 📝 Dev.to: ${report.platforms.devto}` }
+        )
+        .setFooter({ text: "InsurgentForge • Analytics" })
+        .setTimestamp();
+      await channel.send({
+        content: `<@${OWNER_ID}> 📊 weekly performance snapshot:`,
+        embeds: [embed],
+        allowedMentions: { users: [OWNER_ID] },
+      });
+    }
+    console.log(`${new Date().toISOString()} [scheduler] ✅ analytics report complete`);
+  } catch (e) {
+    console.error(`${new Date().toISOString()} [scheduler] ❌ analytics failed: ${e.message}`);
+  }
+}
+
 function setupCrons() {
   // Draft delivery: every 2 minutes — picks up any drafts created after bot started
   const deliverTask = cron.schedule("*/2 * * * *", async () => {
@@ -350,13 +453,28 @@ function setupCrons() {
   const content700 = cron.schedule("0 19 * * *", runCronDailyContent, { name: "vanguard_content_700" });
   tasks.push(content700);
   console.log("[scheduler] DAILY content: 9:30 AM, 2:00 PM, 7:00 PM (local)");
+
+  // Lead scoring: every hour (leads are time-sensitive)
+  const leadTask = cron.schedule("0 * * * *", runCronLeadScoring, { name: "vanguard_leads" });
+  tasks.push(leadTask);
+  console.log("[scheduler] LEAD scoring: hourly");
+
+  // Competitor tracking: daily at 8:00 AM
+  const competitorTask = cron.schedule("0 8 * * *", runCronCompetitorTracking, { name: "vanguard_competitors" });
+  tasks.push(competitorTask);
+  console.log("[scheduler] COMPETITOR tracking: daily at 8:00 AM (local)");
+
+  // Analytics report: Monday at 8:00 AM
+  const analyticsTask = cron.schedule("0 8 * * 1", runCronWeeklyAnalytics, { name: "vanguard_analytics" });
+  tasks.push(analyticsTask);
+  console.log("[scheduler] WEEKLY analytics: Mondays at 8:00 AM (local)");
 }
 
 // ── LIFECYCLE ────────────────────────────────────────────────────────────
 
 async function ensureTablesExist() {
   try {
-    // Create content_drafts table if it doesn't exist
+    // Create content_drafts table
     await query(`
       CREATE TABLE IF NOT EXISTS vg_content_drafts (
         id SERIAL PRIMARY KEY,
@@ -370,6 +488,7 @@ async function ensureTablesExist() {
         linkedin_draft TEXT,
         status VARCHAR(50) DEFAULT 'pending_approval',
         rejected_reason TEXT,
+        published_platforms TEXT,
         created_at TIMESTAMP DEFAULT now(),
         delivered_at TIMESTAMP,
         approved_at TIMESTAMP,
@@ -377,6 +496,41 @@ async function ensureTablesExist() {
       )
     `);
     console.log("[scheduler] ✅ content_drafts table ready");
+
+    // Create gmail_messages table for lead scoring
+    await query(`
+      CREATE TABLE IF NOT EXISTS gmail_messages (
+        id SERIAL PRIMARY KEY,
+        gmail_id VARCHAR(255) UNIQUE,
+        from TEXT,
+        subject TEXT,
+        body TEXT,
+        lead_score INT,
+        lead_intent VARCHAR(50),
+        lead_problem TEXT,
+        lead_fit VARCHAR(50),
+        received_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT now()
+      )
+    `);
+    console.log("[scheduler] ✅ gmail_messages table ready");
+
+    // Create market_signals table for competitor tracking
+    await query(`
+      CREATE TABLE IF NOT EXISTS vg_market_signals (
+        id SERIAL PRIMARY KEY,
+        source VARCHAR(50),
+        title TEXT,
+        sentiment VARCHAR(50),
+        type VARCHAR(50),
+        confidence INT,
+        insight TEXT,
+        url TEXT,
+        created_at TIMESTAMP DEFAULT now(),
+        UNIQUE(source, title)
+      )
+    `);
+    console.log("[scheduler] ✅ market_signals table ready");
   } catch (e) {
     console.error("[scheduler] table creation error:", e.message);
   }
