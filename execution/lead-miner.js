@@ -1,11 +1,10 @@
 // TOOL: Lead Mining Engine — hunt for real prospects across sources
 require("dotenv").config();
-const Anthropic = require("@anthropic-ai/sdk");
+const Groq = require("groq-sdk");
 const { query } = require("./db");
 
-const anthropic = new Anthropic({
-  apiKey: process.env.DEEPSEEK_API_KEY,
-  baseURL: "https://api.deepseek.com",
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
 });
 
 // Source scrapers (imported separately)
@@ -47,13 +46,13 @@ Extract ONLY if this is a real person asking for Discord bot help. Return JSON:
 
 Be strict: only qualify if they're actively looking for a solution.`;
 
-    const response = await anthropic.messages.create({
-      model: "deepseek-chat",
+    const response = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
       max_tokens: 600,
       messages: [{ role: "user", content: prompt }],
     });
 
-    const content = response.content[0].type === "text" ? response.content[0].text : "";
+    const content = response.choices[0]?.message?.content || "";
 
     try {
       const data = JSON.parse(content);
