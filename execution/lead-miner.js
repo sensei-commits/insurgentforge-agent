@@ -1,11 +1,7 @@
 // TOOL: Lead Mining Engine — hunt for real prospects across sources
 require("dotenv").config();
-const Groq = require("groq-sdk");
 const { query } = require("./db");
-
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const { extractLeadSignals } = require("./lead-extractor-simple");
 
 // Source scrapers (imported separately)
 let sourceFunctions = {};
@@ -28,77 +24,9 @@ async function initializeSources() {
   }
 }
 
-async function extractLeadFromText(text, source) {
-  try {
-    const prompt = `You are a lead qualification AI for InsurgentForge. Find BUSINESS OPPORTUNITIES.
-
-SOURCE: ${source}
-TEXT: ${text.slice(0, 1000)}
-
-ONLY qualify if this is a REAL CUSTOMER asking for help OR complaining about cost/pain. Return JSON:
-{
-  "isQualified": true|false,
-  "problem": "what they specifically need (custom bot, cheaper solution, etc)",
-  "currentSolution": "what they're using now (paid bot, MEE6, Dyno, etc.) - focus on paid solutions",
-  "painPoints": "why this is a problem (too expensive, limited features, too slow, etc.)",
-  "scale": "how many servers/users they need (small/medium/large)",
-  "budget": "can they pay? (cheap, willing-to-pay, paid-current-solution)",
-  "urgency": "how soon do they need this? (immediate/soon/exploring)",
-  "email": "if mentioned, else null",
-  "discord": "if mentioned, else null"
-}
-
-STRICT: Only qualify if:
-- They're actively looking for a solution (not just discussing tech)
-- They mention cost/pricing problems with current solution
-- They need a custom bot built
-- They're asking WHO can build/help them
-
-DON'T qualify for:
-- Generic tech discussions
-- Library bug reports
-- How-to tutorials
-- Feature discussions with library maintainers`;
-
-    const response = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      max_tokens: 600,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const content = response.choices[0]?.message?.content || "";
-
-    try {
-      const data = JSON.parse(content);
-      return data.isQualified ? data : null;
-    } catch (e) {
-      // Try to extract JSON from markdown code blocks
-      let jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        try {
-          const data = JSON.parse(jsonMatch[1]);
-          return data.isQualified ? data : null;
-        } catch (e2) {
-          // Fall through to regex extraction
-        }
-      }
-
-      // Try raw JSON extraction
-      jsonMatch = content.match(/\{[\s\S]*?\n\}/);
-      if (jsonMatch) {
-        try {
-          const data = JSON.parse(jsonMatch[0]);
-          return data.isQualified ? data : null;
-        } catch (e3) {
-          // Give up
-        }
-      }
-      return null;
-    }
-  } catch (err) {
-    console.error("[lead-miner] extraction error:", err.message);
-    return null;
-  }
+function extractLeadFromText(text, source) {
+  // Use simple keyword-based extraction (no AI, no token limits)
+  return extractLeadSignals(text, source);
 }
 
 async function deduplicateLead(lead, source) {
@@ -154,8 +82,10 @@ async function mineSources() {
     await initializeSources();
 
     const newLeads = [];
-    // Priority order: customer-direct sources first (job boards, tweets, discussions)
-    const sources = ["upwork", "fiverr", "twitter", "indiehackers", "reddit", "github", "hackernews", "devto"];
+    // Priority order: customer pain/opportunity sources
+    // Note: Upwork & Twitter blocked by anti-bot. Use with paid APIs only.
+    const sources = ["fiverr", "indiehackers", "github", "reddit", "hackernews", "devto"];
+    // Blocked (require paid API): "upwork", "twitter"
 
     for (const source of sources) {
       if (!sourceFunctions[source]) {
