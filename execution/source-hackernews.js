@@ -32,6 +32,11 @@ async function scrapeHackerNews() {
     if (!topStories) return [];
 
     // Sample top stories for Discord/bot/automation mentions
+    if (!Array.isArray(topStories)) {
+      console.log("[hn] topStories is not an array:", typeof topStories);
+      return [];
+    }
+
     for (const storyId of topStories.slice(0, 50)) {
       try {
         const story = await fetchHN(`https://hacker-news.firebaseio.com/v0/item/${storyId}.json`);

@@ -1,24 +1,22 @@
 // SOURCE: Dev.to scraper — hunt for Discord/bot building discussions
-const https = require("https");
 
-function fetchDevTo(path) {
-  return new Promise((resolve, reject) => {
-    https
-      .get(`https://dev.to/api${path}`, { headers: { "User-Agent": "InsurgentForge/1.0" } }, (res) => {
-        let data = "";
-        res.on("data", (chunk) => {
-          data += chunk;
-        });
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(data));
-          } catch (e) {
-            reject(e);
-          }
-        });
-      })
-      .on("error", reject);
-  });
+async function fetchDevTo(path) {
+  try {
+    const response = await fetch(`https://dev.to/api${path}`, {
+      method: "GET",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Dev.to returned ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (err) {
+    throw new Error(`Dev.to fetch failed: ${err.message}`);
+  }
 }
 
 async function scrapeDevTo() {

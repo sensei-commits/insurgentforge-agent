@@ -93,8 +93,8 @@ async function storeLead(lead, source, sourceUrl, sourceAuthor) {
   try {
     const { rows } = await query(
       `INSERT INTO vg_mining_leads
-       (source, problem, current_solution, pain_points, scale, budget, urgency, email, discord, source_url, source_author, extracted_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+       (source, problem, current_solution, pain_points, scale, budget, urgency, email, discord, source_url, source_author)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id`,
       [
         source,
