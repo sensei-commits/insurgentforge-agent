@@ -6,8 +6,50 @@ const SUBREDDITS = [
   "discordapp",          // General Discord
   "learnprogramming",    // People building things
   "webdev",              // Automation-minded devs
-  "Python",              // Python Discord bot builders
 ];
+
+async function fetchFromReddit(path) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: "reddit.com",
+      path: path,
+      method: "GET",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 InsurgentForge/1.0",
+        "Accept": "application/json",
+      },
+      timeout: 10000,
+    };
+
+    https
+      .request(options, (res) => {
+        let data = "";
+
+        res.on("data", (chunk) => {
+          data += chunk;
+        });
+
+        res.on("end", () => {
+          if (res.statusCode !== 200) {
+            return reject(
+              new Error(`Reddit returned ${res.statusCode}`)
+            );
+          }
+
+          try {
+            const parsed = JSON.parse(data);
+            resolve(parsed);
+          } catch (e) {
+            reject(new Error("Invalid JSON from Reddit"));
+          }
+        });
+      })
+      .on("error", reject)
+      .on("timeout", () => reject(new Error("Reddit request timeout")))
+      .end();
+  });
+}
 
 async function scrapeReddit() {
   try {
@@ -17,34 +59,31 @@ async function scrapeReddit() {
       try {
         console.log(`[reddit] scraping r/${subreddit}...`);
 
-        // Fetch latest posts (past 24 hours) with proper User-Agent
-        const url = `https://www.reddit.com/r/${subreddit}/new.json?limit=50&t=day`;
-        const response = await new Promise((resolve, reject) => {
-          https.get(url, { headers: { "User-Agent": "InsurgentForge/1.0 (by iNFAMOUSII8)" } }, (res) => {
-            let data = "";
-            res.on("data", (chunk) => (data += chunk));
-            res.on("end", () => {
-              try {
-                resolve(JSON.parse(data));
-              } catch (e) {
-                reject(e);
-              }
-            });
-          }).on("error", reject);
-        });
+        // Fetch hot posts from the past day
+        const path = `/r/${subreddit}/hot.json?limit=50&t=day`;
+        const response = await fetchFromReddit(path);
 
-        if (!response.data || !response.data.children) continue;
+        if (!response.data || !response.data.children) {
+          console.log(`[reddit] no data in response for r/${subreddit}`);
+          continue;
+        }
 
         for (const item of response.data.children) {
           const post = item.data;
 
+          // Skip stickied posts and ads
+          if (post.stickied || post.is_self === false) continue;
+
           // Look for posts about bots, automation, help requests
           const text = `${post.title}\n${post.selftext}`;
           const isRelevant =
-            /bot|discord|automation|help|need|looking|build|custom/i.test(text) &&
-            !/buy|sell|trade|giveaway|meme/i.test(text); // filter noise
+            /bot|automation|help|need|looking|build|custom|discord bot|moderation|level/i.test(
+              text
+            ) &&
+            !/buy|sell|trade|giveaway|scam|spam/i.test(text); // filter noise
 
-          if (isRelevant) {
+          if (isRelevant && post.selftext.length > 20) {
+            // Must have actual content
             posts.push({
               text: `${post.title}\n${post.selftext}`,
               url: `https://reddit.com${post.permalink}`,
@@ -54,6 +93,9 @@ async function scrapeReddit() {
             });
           }
         }
+
+        // Rate limit: small delay between subreddit requests
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       } catch (err) {
         console.error(`[reddit] r/${subreddit} error:`, err.message);
         continue;
