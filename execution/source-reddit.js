@@ -8,7 +8,7 @@ const SUBREDDITS = [
   "webdev",              // Automation-minded devs
 ];
 
-async function fetchFromReddit(path) {
+async function fetchFromReddit(path, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: "reddit.com",
@@ -16,14 +16,30 @@ async function fetchFromReddit(path) {
       method: "GET",
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 InsurgentForge/1.0",
-        "Accept": "application/json",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
       },
       timeout: 10000,
+      redirect: "follow", // Follow redirects automatically
     };
 
     https
       .request(options, (res) => {
+        // Handle redirects manually (3xx status codes)
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && maxRedirects > 0) {
+          console.log(`[reddit] following redirect (${res.statusCode}) to ${res.headers.location}`);
+          const redirectUrl = new URL(res.headers.location, `https://reddit.com`);
+          return fetchFromReddit(redirectUrl.pathname + redirectUrl.search, maxRedirects - 1)
+            .then(resolve)
+            .catch(reject);
+        }
+
+        if (res.statusCode !== 200) {
+          return reject(
+            new Error(`Reddit returned ${res.statusCode}`)
+          );
+        }
+
         let data = "";
 
         res.on("data", (chunk) => {
@@ -31,17 +47,11 @@ async function fetchFromReddit(path) {
         });
 
         res.on("end", () => {
-          if (res.statusCode !== 200) {
-            return reject(
-              new Error(`Reddit returned ${res.statusCode}`)
-            );
-          }
-
           try {
             const parsed = JSON.parse(data);
             resolve(parsed);
           } catch (e) {
-            reject(new Error("Invalid JSON from Reddit"));
+            reject(new Error("Invalid JSON from Reddit: " + data.slice(0, 100)));
           }
         });
       })
