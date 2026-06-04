@@ -23,8 +23,9 @@ async function scrapeDevTo() {
   try {
     const posts = [];
 
-    // Search for relevant articles
-    const tags = ["discord", "bot", "automation", "api"];
+    // Search for business/service signals, not tutorials
+    // Look for people offering services, asking for help, or discussing pain points
+    const tags = ["freelance", "hiring", "jobs", "for-hire"];
 
     for (const tag of tags) {
       try {

@@ -34,15 +34,17 @@ async function scrapeGitHub() {
   try {
     const issues = [];
 
-    // Search for RECENT feature requests (past 7 days)
+    // Search for CUSTOMER OPPORTUNITIES - people looking for bot services, not library issues
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const dateFilter = sevenDaysAgo.toISOString().split('T')[0];
 
+    // Focus on help wanted, services, and jobs - not library issues
     const queries = [
-      `repo:discordjs/discord.js is:issue is:open label:"enhancement" "bot" updated:>${dateFilter}`,
-      `repo:Rapptz/discord.py is:issue is:open label:"enhancement" updated:>${dateFilter}`,
-      `is:issue is:open "discord bot" "feature request" updated:>${dateFilter}`,
+      `"help wanted" OR "for hire" "discord bot" updated:>${dateFilter}`,
+      `"looking for" "discord bot builder" OR "bot developer" updated:>${dateFilter}`,
+      `"need" "custom bot" OR "custom discord" updated:>${dateFilter}`,
+      `is:discussion "discord bot" "build" OR "create" updated:>${dateFilter}`,
     ];
 
     for (const query of queries) {

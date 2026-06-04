@@ -43,9 +43,13 @@ async function scrapeHackerNews() {
 
         if (!story || !story.title) continue;
 
+        // Look for customer pain: cost issues, need for solutions, problems with existing tools
         const isRelevant =
-          /discord|bot|automation|api|integration|tool/i.test(story.title) &&
-          story.descendants >= 5; // Has discussion
+          (/expensive|costly|paying|subscription|too.much|cost|price/i.test(story.title) ||
+           /need|looking for|help|problem|issue|failing|broken|down/i.test(story.title) ||
+           /discord.*bot|custom.*bot|bot.*service|automation.*service/i.test(story.title)) &&
+          /discord|bot|automation|tool|service|platform/i.test(story.title) &&
+          story.descendants >= 3; // Has discussion
 
         if (isRelevant) {
           items.push({

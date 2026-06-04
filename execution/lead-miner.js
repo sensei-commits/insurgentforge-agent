@@ -26,25 +26,35 @@ async function initializeSources() {
 
 async function extractLeadFromText(text, source) {
   try {
-    const prompt = `You are a lead qualification AI for InsurgentForge. Extract prospect info from this post/comment.
+    const prompt = `You are a lead qualification AI for InsurgentForge. Find BUSINESS OPPORTUNITIES.
 
 SOURCE: ${source}
 TEXT: ${text.slice(0, 1000)}
 
-Extract if this is a real person looking for Discord bot features/solutions OR talking about bot problems/costs. Return JSON:
+ONLY qualify if this is a REAL CUSTOMER asking for help OR complaining about cost/pain. Return JSON:
 {
   "isQualified": true|false,
-  "problem": "what bot/feature they need or what problem they mention",
-  "currentSolution": "what they're using now (Dyno, MEE6, custom, etc.) or null",
-  "painPoints": "why they're interested (cost, missing features, reliability, etc.)",
-  "scale": "small/medium/large (estimated users/servers) or unknown",
-  "budget": "free/cheap/willing-to-pay/unknown",
-  "urgency": "immediate/soon/exploring/unknown",
+  "problem": "what they specifically need (custom bot, cheaper solution, etc)",
+  "currentSolution": "what they're using now (paid bot, MEE6, Dyno, etc.) - focus on paid solutions",
+  "painPoints": "why this is a problem (too expensive, limited features, too slow, etc.)",
+  "scale": "how many servers/users they need (small/medium/large)",
+  "budget": "can they pay? (cheap, willing-to-pay, paid-current-solution)",
+  "urgency": "how soon do they need this? (immediate/soon/exploring)",
   "email": "if mentioned, else null",
   "discord": "if mentioned, else null"
 }
 
-Qualify if: they mention bot features, problems with current solutions, cost concerns, or custom builds. Don't qualify just for generic tech articles.`;
+STRICT: Only qualify if:
+- They're actively looking for a solution (not just discussing tech)
+- They mention cost/pricing problems with current solution
+- They need a custom bot built
+- They're asking WHO can build/help them
+
+DON'T qualify for:
+- Generic tech discussions
+- Library bug reports
+- How-to tutorials
+- Feature discussions with library maintainers`;
 
     const response = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
