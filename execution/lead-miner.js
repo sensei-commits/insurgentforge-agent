@@ -1,7 +1,8 @@
 // TOOL: Lead Mining Engine — hunt for real prospects across sources
 require("dotenv").config();
 const { query } = require("./db");
-const { extractLeadSignals } = require("./lead-extractor-simple");
+const { extractStrictLead } = require("./lead-extractor-strict");
+const { scrapeJobBoards } = require("./source-jobs-real");
 
 // Source scrapers (imported separately)
 let sourceFunctions = {};
@@ -9,24 +10,24 @@ let sourceFunctions = {};
 async function initializeSources() {
   try {
     sourceFunctions = {
+      // Priority 1: Real job boards (actual customer money)
+      jobs: scrapeJobBoards,
+      // Priority 2: Community (when available)
       reddit: require("./source-reddit").scrapeReddit,
-      github: require("./source-github").scrapeGitHub,
-      hackernews: require("./source-hackernews").scrapeHackerNews,
-      devto: require("./source-devto").scrapeDevTo,
-      twitter: require("./source-twitter").scrapeTwitter,
-      upwork: require("./source-upwork").scrapeUpwork,
-      fiverr: require("./source-fiverr").scrapeFiverr,
-      indiehackers: require("./source-indiehackers").scrapeIndieHackers,
+      // Deprioritized: Wrong audience, poor signal
+      // github: require("./source-github").scrapeGitHub,
+      // hackernews: require("./source-hackernews").scrapeHackerNews,
+      // devto: require("./source-devto").scrapeDevTo,
     };
-    console.log("[lead-miner] sources initialized");
+    console.log("[lead-miner] sources initialized (job boards + reddit)");
   } catch (err) {
     console.error("[lead-miner] source init error:", err.message);
   }
 }
 
 function extractLeadFromText(text, source) {
-  // Use simple keyword-based extraction (no AI, no token limits)
-  return extractLeadSignals(text, source);
+  // Use strict keyword-based extraction - only REAL customer leads
+  return extractStrictLead(text, source);
 }
 
 async function deduplicateLead(lead, source) {
@@ -82,10 +83,8 @@ async function mineSources() {
     await initializeSources();
 
     const newLeads = [];
-    // Priority order: customer pain/opportunity sources
-    // Note: Upwork & Twitter blocked by anti-bot. Use with paid APIs only.
-    const sources = ["fiverr", "indiehackers", "github", "reddit", "hackernews", "devto"];
-    // Blocked (require paid API): "upwork", "twitter"
+    // Priority: Real customer jobs first, Reddit second
+    const sources = ["jobs", "reddit"];
 
     for (const source of sources) {
       if (!sourceFunctions[source]) {
