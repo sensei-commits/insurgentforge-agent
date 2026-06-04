@@ -20,6 +20,10 @@ const { publishDraftToAll } = require("./auto-publisher");
 const { analyzeIncomingEmails } = require("./lead-scorer");
 const { trackCompetitors } = require("./competitor-tracker");
 const { generateAnalyticsReport, getLeadInsights, getDailyStats } = require("./analytics-engine");
+// Phase 2: repurposing, sequences, crm
+const { repurposeApprovedContent } = require("./content-repurposer");
+const { launchSequencesForHighValueLeads } = require("./email-sequences");
+const { getCRMDashboard } = require("./crm-sync");
 
 const OWNER_ID = process.env.DISCORD_OWNER_ID;
 const CHANNEL_ID = process.env.DISCORD_TRENDS_CHANNEL_ID;
@@ -414,6 +418,66 @@ async function runCronWeeklyAnalytics() {
   }
 }
 
+async function runCronContentRepurposing() {
+  const ts = new Date().toISOString();
+  console.log(`${ts} [scheduler] 🔄 Repurposing approved content...`);
+  try {
+    const results = await repurposeApprovedContent();
+    if (results.length > 0) {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      const embed = new EmbedBuilder()
+        .setTitle(`🔄 Content Repurposed (${results.length})`)
+        .setColor(0x9900ff)
+        .setDescription(`Generated variants for email, LinkedIn, Twitter, TikTok, and more`)
+        .setFooter({ text: "InsurgentForge • Content Repurposing" })
+        .setTimestamp();
+      await channel.send({
+        content: `<@${OWNER_ID}> repurposed ${results.length} pieces → ready for multi-channel distribution`,
+        embeds: [embed],
+        allowedMentions: { users: [OWNER_ID] },
+      });
+    }
+    console.log(`${new Date().toISOString()} [scheduler] ✅ repurposing complete`);
+  } catch (e) {
+    console.error(`${new Date().toISOString()} [scheduler] ❌ repurposing failed: ${e.message}`);
+  }
+}
+
+async function runCronEmailSequences() {
+  const ts = new Date().toISOString();
+  console.log(`${ts} [scheduler] 📧 Launching email sequences...`);
+  try {
+    const launched = await launchSequencesForHighValueLeads();
+    if (launched.length > 0) {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      const embed = new EmbedBuilder()
+        .setTitle(`📧 ${launched.length} Email Sequence(s) Launched`)
+        .setColor(0x00aaff)
+        .setDescription(`4-email nurture sequences started for high-value leads`)
+        .setFooter({ text: "InsurgentForge • Email Automation" })
+        .setTimestamp();
+      await channel.send({
+        content: `<@${OWNER_ID}> launched ${launched.length} automated nurture sequences`,
+        embeds: [embed],
+        allowedMentions: { users: [OWNER_ID] },
+      });
+    }
+    console.log(`${new Date().toISOString()} [scheduler] ✅ sequence launch complete`);
+  } catch (e) {
+    console.error(`${new Date().toISOString()} [scheduler] ❌ sequence launch failed: ${e.message}`);
+  }
+}
+
+async function runCronCRMSync() {
+  try {
+    const dashboard = await getCRMDashboard();
+    if (!dashboard) return;
+    console.log(`[scheduler] CRM synced: ${dashboard.leads.high_value} high-value leads, ${dashboard.sequences.active} active sequences`);
+  } catch (e) {
+    console.error(`[scheduler] CRM sync failed: ${e.message}`);
+  }
+}
+
 function setupCrons() {
   // Draft delivery: every 2 minutes — picks up any drafts created after bot started
   const deliverTask = cron.schedule("*/2 * * * *", async () => {
@@ -468,6 +532,23 @@ function setupCrons() {
   const analyticsTask = cron.schedule("0 8 * * 1", runCronWeeklyAnalytics, { name: "vanguard_analytics" });
   tasks.push(analyticsTask);
   console.log("[scheduler] WEEKLY analytics: Mondays at 8:00 AM (local)");
+
+  // PHASE 2: Repurposing, Sequences, CRM
+
+  // Content repurposing: every 6 hours
+  const repurposeTask = cron.schedule("0 */6 * * *", runCronContentRepurposing, { name: "vanguard_repurpose" });
+  tasks.push(repurposeTask);
+  console.log("[scheduler] CONTENT repurposing: every 6 hours");
+
+  // Email sequence launching: every 4 hours
+  const sequenceTask = cron.schedule("0 */4 * * *", runCronEmailSequences, { name: "vanguard_sequences" });
+  tasks.push(sequenceTask);
+  console.log("[scheduler] EMAIL sequences: every 4 hours");
+
+  // CRM sync: every hour
+  const crmTask = cron.schedule("0 * * * *", runCronCRMSync, { name: "vanguard_crm" });
+  tasks.push(crmTask);
+  console.log("[scheduler] CRM sync: hourly");
 }
 
 // ── LIFECYCLE ────────────────────────────────────────────────────────────
@@ -531,6 +612,86 @@ async function ensureTablesExist() {
       )
     `);
     console.log("[scheduler] ✅ market_signals table ready");
+
+    // Create content_variants table for repurposing
+    await query(`
+      CREATE TABLE IF NOT EXISTS vg_content_variants (
+        id SERIAL PRIMARY KEY,
+        draft_id INT UNIQUE,
+        variants JSONB,
+        created_at TIMESTAMP DEFAULT now(),
+        FOREIGN KEY (draft_id) REFERENCES vg_content_drafts(id)
+      )
+    `);
+    console.log("[scheduler] ✅ content_variants table ready");
+
+    // Create email_sequences table
+    await query(`
+      CREATE TABLE IF NOT EXISTS vg_email_sequences (
+        id SERIAL PRIMARY KEY,
+        lead_id INT,
+        lead_email VARCHAR(255),
+        sequence_type VARCHAR(50),
+        status VARCHAR(50),
+        created_at TIMESTAMP DEFAULT now(),
+        updated_at TIMESTAMP
+      )
+    `);
+    console.log("[scheduler] ✅ email_sequences table ready");
+
+    // Create email_sequence_steps table
+    await query(`
+      CREATE TABLE IF NOT EXISTS vg_email_sequence_steps (
+        id SERIAL PRIMARY KEY,
+        sequence_id INT,
+        step_number INT,
+        email_subject TEXT,
+        email_body TEXT,
+        send_after_days INT,
+        status VARCHAR(50),
+        sent_at TIMESTAMP,
+        FOREIGN KEY (sequence_id) REFERENCES vg_email_sequences(id)
+      )
+    `);
+    console.log("[scheduler] ✅ email_sequence_steps table ready");
+
+    // Create CRM tables
+    await query(`
+      CREATE TABLE IF NOT EXISTS vg_crm_leads (
+        id SERIAL PRIMARY KEY,
+        email_id INT UNIQUE,
+        email_address VARCHAR(255),
+        lead_score INT,
+        status VARCHAR(50),
+        created_at TIMESTAMP DEFAULT now(),
+        updated_at TIMESTAMP
+      )
+    `);
+    console.log("[scheduler] ✅ crm_leads table ready");
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS vg_crm_content (
+        id SERIAL PRIMARY KEY,
+        draft_id INT UNIQUE,
+        title TEXT,
+        platforms TEXT,
+        status VARCHAR(50),
+        published_at TIMESTAMP
+      )
+    `);
+    console.log("[scheduler] ✅ crm_content table ready");
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS vg_crm_sales_pipeline (
+        id SERIAL PRIMARY KEY,
+        sequence_id INT UNIQUE,
+        lead_email VARCHAR(255),
+        stage VARCHAR(50),
+        step_number INT,
+        updated_at TIMESTAMP
+      )
+    `);
+    console.log("[scheduler] ✅ crm_sales_pipeline table ready");
   } catch (e) {
     console.error("[scheduler] table creation error:", e.message);
   }
