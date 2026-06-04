@@ -9,44 +9,83 @@ async function deliverLeadsToDiscord(client, channelId, ownerId, leads) {
     const channel = await client.channels.fetch(channelId);
 
     for (const lead of leads) {
+      // Build the title with clickable link if available
+      let titleText = `🎯 ${lead.problem.slice(0, 100)}`;
+      if (titleText.length > 100) titleText += "...";
+
       const embed = new EmbedBuilder()
-        .setTitle(`🎯 REAL LEAD: ${lead.problem}`)
-        .setColor(0x00ff00)
-        .addFields(
-          { name: "Source", value: `${lead.source.toUpperCase()} (@${lead.source_author || "unknown"})`, inline: true },
-          { name: "Urgency", value: lead.urgency || "unknown", inline: true },
-          {
-            name: "Current Solution",
-            value: lead.current_solution || "None mentioned",
-            inline: false,
-          },
-          { name: "Pain Points", value: lead.pain_points || "N/A", inline: false },
-          {
-            name: "Scale",
-            value: lead.scale || "unknown",
-            inline: true,
-          },
-          {
-            name: "Budget",
-            value: lead.budget || "unknown",
-            inline: true,
-          }
-        )
-        .setFooter({ text: `Lead ID: ${lead.id}` })
-        .setTimestamp();
+        .setTitle(titleText)
+        .setColor(0x00ff00);
+
+      // Add source link FIRST and prominently
+      if (lead.source_url) {
+        embed.setURL(lead.source_url); // Makes title clickable
+        embed.addFields({
+          name: "📍 VIEW POST",
+          value: `[Open on ${lead.source.toUpperCase()}](${lead.source_url})`,
+          inline: false,
+        });
+      }
+
+      // Add source and author info
+      embed.addFields({
+        name: "Source",
+        value: `${lead.source.toUpperCase()} ${lead.source_author ? `by @${lead.source_author}` : "(author unavailable)"}`,
+        inline: true,
+      });
+
+      if (lead.urgency) {
+        embed.addFields({ name: "Urgency", value: lead.urgency, inline: true });
+      }
+
+      // Add the actual problem/details
+      embed.addFields({
+        name: "Problem Statement",
+        value: lead.problem.slice(0, 1024),
+        inline: false,
+      });
+
+      if (lead.current_solution) {
+        embed.addFields({
+          name: "Current Solution",
+          value: lead.current_solution,
+          inline: false,
+        });
+      }
+
+      if (lead.pain_points) {
+        embed.addFields({
+          name: "Pain Points",
+          value: lead.pain_points,
+          inline: false,
+        });
+      }
+
+      // Add scale and budget
+      const details = [];
+      if (lead.scale) details.push(`📊 Scale: ${lead.scale}`);
+      if (lead.budget) details.push(`💰 Budget: ${lead.budget}`);
+      if (details.length > 0) {
+        embed.addFields({
+          name: "Details",
+          value: details.join(" | "),
+          inline: false,
+        });
+      }
 
       // Add contact info if available
       if (lead.email || lead.discord) {
         const contact = [];
         if (lead.email) contact.push(`📧 ${lead.email}`);
         if (lead.discord) contact.push(`🎮 ${lead.discord}`);
-        embed.addFields({ name: "Contact", value: contact.join(" | "), inline: false });
+        embed.addFields({
+          name: "Contact Info",
+          value: contact.join(" | "),
+          inline: false,
+        });
       }
 
-      // Add source link
-      if (lead.source_url) {
-        embed.addFields({ name: "Post Link", value: `[View on ${lead.source}](${lead.source_url})`, inline: false });
-      }
+      embed.setFooter({ text: `Lead #${lead.id} | ${lead.source}` }).setTimestamp();
 
       await channel.send({
         content: `<@${ownerId}> 🎯 **NEW QUALIFIED LEAD**`,

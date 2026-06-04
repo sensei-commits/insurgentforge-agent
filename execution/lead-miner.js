@@ -176,11 +176,15 @@ async function mineSources() {
                   id: leadId,
                   source,
                   problem: lead.problem,
-                  currentSolution: lead.currentSolution,
+                  current_solution: lead.currentSolution,
+                  pain_points: lead.painPoints,
+                  scale: lead.scale,
+                  budget: lead.budget,
+                  urgency: lead.urgency,
                   email: lead.email,
                   discord: lead.discord,
-                  sourceUrl: post.url,
-                  sourceAuthor: post.author,
+                  source_url: post.url,
+                  source_author: post.author,
                 });
                 console.log(`[lead-miner] found lead: "${lead.problem}" from ${source}`);
               }
