@@ -1,5 +1,5 @@
 // TOOL: Auto-publish approved content drafts to Bluesky, Mastodon, Dev.to
-const fetch = require("node-fetch");
+// Note: Using built-in fetch (Node 18+), not node-fetch
 
 // Bluesky
 async function publishToBluesky(text) {
