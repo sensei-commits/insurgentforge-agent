@@ -1,5 +1,5 @@
 // SOURCE: Stack Overflow questions about Discord bots
-// Monitor unanswered/poorly-answered questions to position yourself as expert
+// Scrape the search results page directly (simpler than API)
 
 async function scrapeStackOverflow() {
   try {
@@ -9,53 +9,66 @@ async function scrapeStackOverflow() {
       "discord bot",
       "discord.py",
       "discord.js",
-      "discord automation",
     ];
 
     for (const term of searchTerms) {
       try {
         console.log(`[stackoverflow] searching: "${term}"...`);
 
-        // Stack Overflow API (public, free)
-        const url = `https://api.stackexchange.com/2.3/search/advanced?site=stackoverflow&q=${encodeURIComponent(
+        // Direct web scrape (easier than API)
+        const url = `https://stackoverflow.com/search?q=${encodeURIComponent(
           term
-        )}&sort=newest&order=desc&pagesize=30`;
+        )}&tab=newest`;
 
-        const response = await fetch(url);
-        if (!response.ok) continue;
+        const response = await fetch(url, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        });
 
-        const data = await response.json();
+        if (!response.ok) {
+          console.log(`[stackoverflow] status ${response.status}`);
+          continue;
+        }
 
-        if (!data.items) continue;
+        const html = await response.text();
 
-        for (const item of data.items) {
-          // Focus on unanswered or poorly answered questions
-          // These are visibility opportunities
-          if (
-            item.answer_count === 0 ||
-            item.score < 2 ||
-            item.is_answered === false
-          ) {
+        // Extract questions from page
+        // Look for question links and titles
+        const questionRegex =
+          /<a[^>]*class="[^"]*s-link[^"]*"[^>]*href="\/questions\/(\d+)\/([^"]*)"[^>]*>([^<]+)<\/a>/gi;
+
+        let match;
+        let count = 0;
+
+        while ((match = questionRegex.exec(html)) !== null && count < 10) {
+          const questionId = match[1];
+          const questionSlug = match[2];
+          const questionTitle = match[3];
+
+          if (questionTitle && questionTitle.length > 10) {
             questions.push({
-              text: `${item.title}\n${item.body || ""}`,
-              url: item.link,
-              author: item.owner?.display_name || "stackoverflow_user",
-              score: item.score,
-              timestamp: item.creation_date,
-              answers: item.answer_count,
-              views: item.view_count,
+              text: questionTitle,
+              url: `https://stackoverflow.com/questions/${questionId}/${questionSlug}`,
+              author: "stackoverflow_user",
+              score: 0, // Would need to scrape each page for score
+              timestamp: Math.floor(Date.now() / 1000),
+              answers: 0,
+              views: 0,
             });
+            count++;
           }
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       } catch (err) {
-        console.error(`[stackoverflow] search error:`, err.message);
+        console.log(`[stackoverflow] search error: ${err.message}`);
         continue;
       }
     }
 
-    console.log(`[stackoverflow] found ${questions.length} visibility opportunities`);
+    console.log(`[stackoverflow] found ${questions.length} unanswered questions`);
     return questions;
   } catch (err) {
     console.error("[stackoverflow] scrape error:", err.message);

@@ -8,113 +8,73 @@ async function scrapeUpworkJobs() {
   const jobs = [];
 
   try {
-    console.log("[jobs] starting browser for Upwork scraping...");
+    console.log("[jobs] launching browser for Upwork...");
 
     browser = await playwright.chromium.launch({
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
-    const context = await browser.createBrowserContext();
-    const page = await context.newPage();
+    const page = await browser.newPage();
 
-    // Set realistic user agent
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    );
+    // Search for Discord bot jobs
+    const url = "https://www.upwork.com/ab/jobs/search/?q=discord+bot&sort=recency";
 
-    // Search for Discord bot jobs on Upwork
-    const searchTerms = [
-      "discord bot",
-      "discord automation",
-      "custom bot development",
-    ];
+    console.log("[jobs] navigating to Upwork...");
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
 
-    for (const term of searchTerms) {
+    // Extract visible job listings
+    const jobData = await page.evaluate(() => {
+      const jobs = [];
       try {
-        console.log(`[jobs] searching Upwork: "${term}"...`);
-
-        const url = `https://www.upwork.com/ab/jobs/search/?q=${encodeURIComponent(
-          term
-        )}&sort=recency&job_status=active`;
-
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
-
-        // Wait for job listings to load
-        await page.waitForSelector(
+        // Try multiple selectors for job cards
+        const selectors = [
           '[data-test="JobCard-item"]',
-          { timeout: 5000 }
-        ).catch(() => {});
+          'div[class*="JobCard"]',
+          'section[class*="job"]',
+          'article[class*="job"]',
+        ];
 
-        // Extract job data
-        const jobData = await page.evaluate(() => {
-          const jobs = [];
-          const jobElements = document.querySelectorAll('[data-test="JobCard-item"]');
+        for (const selector of selectors) {
+          const elements = document.querySelectorAll(selector);
+          if (elements.length > 0) {
+            elements.forEach((el) => {
+              try {
+                const text = el.innerText || el.textContent;
+                const link = el.querySelector("a")?.href;
 
-          jobElements.forEach((el) => {
-            try {
-              const titleEl = el.querySelector("h2, [data-test*='title']");
-              const descEl = el.querySelector("p, [data-test*='description']");
-              const budgetEl = el.querySelector(
-                "[data-test*='budget'], span:contains('$')"
-              );
-              const linkEl = el.querySelector("a[href*='/jobs/']");
-
-              const title = titleEl ? titleEl.innerText.trim() : "";
-              const description = descEl ? descEl.innerText.trim() : "";
-              const budget = budgetEl ? budgetEl.innerText.trim() : "";
-              const link = linkEl ? linkEl.href : "";
-
-              if (title && link) {
-                jobs.push({
-                  title,
-                  description,
-                  budget,
-                  link,
-                  timestamp: new Date().getTime() / 1000,
-                });
-              }
-            } catch (e) {
-              // Skip on parse error
-            }
-          });
-
-          return jobs;
-        });
-
-        // Add to results
-        for (const job of jobData) {
-          if (
-            job.title &&
-            (job.title.toLowerCase().includes("discord") ||
-              job.title.toLowerCase().includes("bot") ||
-              job.description.toLowerCase().includes("discord"))
-          ) {
-            jobs.push({
-              text: `${job.title}\n${job.description}`,
-              url: job.link,
-              author: "upwork_client",
-              score: job.budget ? parseInt(job.budget.replace(/[^0-9]/g, "")) : 500,
-              timestamp: job.timestamp,
+                if (text && text.length > 20) {
+                  jobs.push({
+                    text,
+                    link: link || "",
+                    source: "upwork",
+                  });
+                }
+              } catch (e) {}
             });
+            break;
           }
         }
+      } catch (e) {}
+      return jobs;
+    });
 
-        // Small delay between requests
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      } catch (err) {
-        console.log(`[jobs] Upwork search error: ${err.message}`);
-        continue;
+    for (const job of jobData) {
+      if (job.text && job.text.toLowerCase().includes("discord")) {
+        jobs.push({
+          text: job.text,
+          url: job.link,
+          author: "upwork_client",
+          score: 500,
+          timestamp: Math.floor(Date.now() / 1000),
+        });
       }
     }
 
-    console.log(`[jobs] found ${jobs.length} Upwork jobs`);
+    console.log(`[jobs] found ${jobs.length} Upwork listings`);
   } catch (err) {
-    console.error("[jobs] browser error:", err.message);
+    console.log(`[jobs] Upwork error: ${err.message}`);
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
   }
 
   return jobs;
@@ -125,100 +85,81 @@ async function scrapeFreelancerJobs() {
   const jobs = [];
 
   try {
-    console.log("[jobs] starting browser for Freelancer scraping...");
-
     browser = await playwright.chromium.launch({
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     const page = await browser.newPage();
 
-    // Search for Discord bot jobs on Freelancer
-    const searchTerms = ["discord bot", "discord automation"];
+    const url = "https://www.freelancer.com/jobs/search/?q=discord+bot&sort=recency";
 
-    for (const term of searchTerms) {
+    console.log("[jobs] navigating to Freelancer...");
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+
+    // Extract job listings
+    const jobData = await page.evaluate(() => {
+      const jobs = [];
       try {
-        console.log(`[jobs] searching Freelancer: "${term}"...`);
+        const selectors = [
+          '[data-test-id="job-card"]',
+          'div[class*="JobCard"]',
+          'article[class*="job"]',
+        ];
 
-        const url = `https://www.freelancer.com/jobs/search/?q=${encodeURIComponent(
-          term
-        )}&sort=recency`;
+        for (const selector of selectors) {
+          const elements = document.querySelectorAll(selector);
+          if (elements.length > 0) {
+            elements.forEach((el) => {
+              try {
+                const text = el.innerText || el.textContent;
+                const link = el.querySelector("a")?.href;
 
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
-
-        // Extract job listings
-        const jobData = await page.evaluate(() => {
-          const jobs = [];
-          const jobElements = document.querySelectorAll(
-            "[data-test-id='job-card'], .JobCard"
-          );
-
-          jobElements.forEach((el) => {
-            try {
-              const titleEl = el.querySelector("a[data-link-to='job-detail']");
-              const descEl = el.querySelector(".JobCard-description");
-              const budgetEl = el.querySelector("[data-test-id='budget']");
-
-              const title = titleEl ? titleEl.innerText.trim() : "";
-              const description = descEl ? descEl.innerText.trim() : "";
-              const budget = budgetEl ? budgetEl.innerText.trim() : "";
-              const link = titleEl ? titleEl.href : "";
-
-              if (title && link) {
-                jobs.push({
-                  title,
-                  description,
-                  budget,
-                  link,
-                  timestamp: new Date().getTime() / 1000,
-                });
-              }
-            } catch (e) {
-              // Skip on error
-            }
-          });
-
-          return jobs;
-        });
-
-        for (const job of jobData) {
-          jobs.push({
-            text: `${job.title}\n${job.description}`,
-            url: job.link,
-            author: "freelancer_client",
-            score: job.budget ? parseInt(job.budget.replace(/[^0-9]/g, "")) : 300,
-            timestamp: job.timestamp,
-          });
+                if (text && text.length > 20) {
+                  jobs.push({
+                    text,
+                    link: link || "",
+                    source: "freelancer",
+                  });
+                }
+              } catch (e) {}
+            });
+            break;
+          }
         }
+      } catch (e) {}
+      return jobs;
+    });
 
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      } catch (err) {
-        console.log(`[jobs] Freelancer search error: ${err.message}`);
-        continue;
+    for (const job of jobData) {
+      if (job.text && job.text.toLowerCase().includes("discord")) {
+        jobs.push({
+          text: job.text,
+          url: job.link,
+          author: "freelancer_client",
+          score: 400,
+          timestamp: Math.floor(Date.now() / 1000),
+        });
       }
     }
 
-    console.log(`[jobs] found ${jobs.length} Freelancer jobs`);
+    console.log(`[jobs] found ${jobs.length} Freelancer listings`);
   } catch (err) {
-    console.error("[jobs] browser error:", err.message);
+    console.log(`[jobs] Freelancer error: ${err.message}`);
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
   }
 
   return jobs;
 }
 
 async function scrapeJobBoards() {
-  console.log("[jobs] scraping real job boards...");
+  console.log("[jobs] scraping real job boards with browser automation...");
 
   const upworkJobs = await scrapeUpworkJobs();
   const freelancerJobs = await scrapeFreelancerJobs();
 
   const allJobs = [...upworkJobs, ...freelancerJobs];
-  console.log(`[jobs] total jobs found: ${allJobs.length}`);
+  console.log(`[jobs] total real jobs found: ${allJobs.length}`);
 
   return allJobs;
 }
