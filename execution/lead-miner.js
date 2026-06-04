@@ -136,7 +136,15 @@ async function mineSources() {
         console.log(`[lead-miner] scanning ${source}...`);
         const posts = await sourceFunctions[source]();
 
+        // Filter by recency (past 7 days)
+        const sevenDaysAgoSeconds = Math.floor((Date.now() / 1000) - (7 * 24 * 60 * 60));
+
         for (const post of posts) {
+          // Skip if post is older than 7 days
+          if (post.timestamp && post.timestamp < sevenDaysAgoSeconds) {
+            continue;
+          }
+
           // Extract lead info from text
           const lead = await extractLeadFromText(post.text, source);
 

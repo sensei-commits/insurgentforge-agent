@@ -34,11 +34,15 @@ async function scrapeGitHub() {
   try {
     const issues = [];
 
-    // Search for feature requests in Discord bot repos
+    // Search for RECENT feature requests (past 7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const dateFilter = sevenDaysAgo.toISOString().split('T')[0];
+
     const queries = [
-      'repo:discordjs/discord.js is:issue is:open label:"enhancement" "bot"',
-      'repo:Rapptz/discord.py is:issue is:open label:"enhancement"',
-      'is:issue is:open "discord bot" "feature request"',
+      `repo:discordjs/discord.js is:issue is:open label:"enhancement" "bot" updated:>${dateFilter}`,
+      `repo:Rapptz/discord.py is:issue is:open label:"enhancement" updated:>${dateFilter}`,
+      `is:issue is:open "discord bot" "feature request" updated:>${dateFilter}`,
     ];
 
     for (const query of queries) {

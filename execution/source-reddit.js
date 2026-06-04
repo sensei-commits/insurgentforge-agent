@@ -48,8 +48,8 @@ async function scrapeReddit() {
       try {
         console.log(`[reddit] scraping r/${subreddit}...`);
 
-        // Fetch hot posts from the past day
-        const path = `/r/${subreddit}/hot.json?limit=50&t=day`;
+        // Fetch hot posts from the past week (t=week for more volume)
+        const path = `/r/${subreddit}/hot.json?limit=50&t=week`;
         const response = await fetchFromReddit(path);
 
         if (!response.data || !response.data.children) {

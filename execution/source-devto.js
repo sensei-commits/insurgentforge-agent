@@ -30,11 +30,19 @@ async function scrapeDevTo() {
       try {
         console.log(`[devto] searching tag: ${tag}...`);
 
-        const response = await fetchDevTo(`/articles?tag=${tag}&per_page=30&sort=-published_at`);
+        // Get articles published in the past 7 days
+        const response = await fetchDevTo(`/articles?tag=${tag}&per_page=30&sort=-published_at&top=7d`);
 
         if (!Array.isArray(response)) continue;
 
         for (const article of response.slice(0, 20)) {
+          // Filter for articles published in the past 7 days
+          const pubDate = new Date(article.published_at);
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+          if (pubDate < sevenDaysAgo) continue;
+
           // Look for high-engagement articles
           if (article.comments_count >= 2 || article.positive_reactions_count >= 10) {
             posts.push({
