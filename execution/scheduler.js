@@ -60,10 +60,10 @@ async function runCronDailyDigest() {
 }
 
 function setupCrons() {
-  // Lead mining: every 4 hours (Reddit, GitHub, HN, Dev.to)
-  const miningTask = cron.schedule("0 */4 * * *", runCronLeadMining, { name: "vanguard_mining" });
+  // Lead mining: every 2 hours (Reddit, GitHub, HN, Dev.to)
+  const miningTask = cron.schedule("0 */2 * * *", runCronLeadMining, { name: "vanguard_mining" });
   tasks.push(miningTask);
-  console.log("[scheduler] LEAD MINING: every 4 hours");
+  console.log("[scheduler] LEAD MINING: every 2 hours");
 
   // Daily digest: 9:00 AM (top 10 leads from past 24h)
   const digestTask = cron.schedule("0 9 * * *", runCronDailyDigest, { name: "vanguard_digest" });
