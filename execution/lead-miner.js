@@ -31,20 +31,20 @@ async function extractLeadFromText(text, source) {
 SOURCE: ${source}
 TEXT: ${text.slice(0, 1000)}
 
-Extract ONLY if this is a real person asking for Discord bot help. Return JSON:
+Extract if this is a real person looking for Discord bot features/solutions OR talking about bot problems/costs. Return JSON:
 {
   "isQualified": true|false,
-  "problem": "what bot/feature they need",
+  "problem": "what bot/feature they need or what problem they mention",
   "currentSolution": "what they're using now (Dyno, MEE6, custom, etc.) or null",
-  "painPoints": "why they're looking (cost, features, reliability, etc.)",
-  "scale": "small/medium/large (estimated users/servers)",
+  "painPoints": "why they're interested (cost, missing features, reliability, etc.)",
+  "scale": "small/medium/large (estimated users/servers) or unknown",
   "budget": "free/cheap/willing-to-pay/unknown",
   "urgency": "immediate/soon/exploring/unknown",
   "email": "if mentioned, else null",
   "discord": "if mentioned, else null"
 }
 
-Be strict: only qualify if they're actively looking for a solution.`;
+Qualify if: they mention bot features, problems with current solutions, cost concerns, or custom builds. Don't qualify just for generic tech articles.`;
 
     const response = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",

@@ -83,9 +83,9 @@ async function ensureTablesExist() {
         problem TEXT NOT NULL,
         current_solution TEXT,
         pain_points TEXT,
-        scale VARCHAR(50),
-        budget VARCHAR(50),
-        urgency VARCHAR(50),
+        scale TEXT,
+        budget TEXT,
+        urgency TEXT,
         email VARCHAR(255),
         discord VARCHAR(255),
         source_url TEXT,
@@ -108,6 +108,7 @@ async function ensureTablesExist() {
       "vg_crm_sales_pipeline",
       "gmail_messages",
       "vg_market_signals",
+      "vg_mining_leads", // Drop to recreate with new schema
     ];
 
     for (const table of oldTables) {
