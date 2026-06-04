@@ -14,8 +14,9 @@ const { runDeepResearch } = require("./research");
 // Import email monitoring and scheduled publishing
 const { monitorEmails, deliverInteractions } = require("./email-monitor");
 const { publishScheduledPosts } = require("./scheduled-publisher");
-// Import content generator
+// Import content generator and auto-publisher
 const { generateDailyContent } = require("./content-generator");
+const { publishDraftToAll } = require("./auto-publisher");
 
 const OWNER_ID = process.env.DISCORD_OWNER_ID;
 const CHANNEL_ID = process.env.DISCORD_TRENDS_CHANNEL_ID;
@@ -147,13 +148,35 @@ client.on("interactionCreate", async (interaction) => {
       );
 
       if (action === "vc_approve") {
-        await query(`UPDATE vg_content_drafts SET status='approved', approved_at=now() WHERE id=$1`, [draftId]);
-        await interaction.message.edit({
-          content: `✅ Approved by <@${OWNER_ID}> — queued for posting`,
-          components: [disabledRow],
-          allowedMentions: { users: [] },
-        });
-        console.log(`[scheduler] approved content draft ${draftId}`);
+        // Get the draft
+        const { rows } = await query(`SELECT * FROM vg_content_drafts WHERE id=$1`, [draftId]);
+        if (!rows.length) {
+          return interaction.followUp({ content: "Draft not found.", ephemeral: true });
+        }
+        const draft = rows[0];
+
+        // Publish to all platforms
+        try {
+          const published = await publishDraftToAll(draft);
+          await query(
+            `UPDATE vg_content_drafts SET status='approved', approved_at=now(), published_at=now() WHERE id=$1`,
+            [draftId]
+          );
+          const platforms = published.map((p) => `${p.platform}`).join(", ");
+          await interaction.message.edit({
+            content: `✅ Approved & published to: ${platforms}`,
+            components: [disabledRow],
+            allowedMentions: { users: [] },
+          });
+          console.log(`[scheduler] published content draft ${draftId} to ${platforms}`);
+        } catch (err) {
+          await interaction.message.edit({
+            content: `⚠️ Approved but publishing failed: ${err.message}`,
+            components: [disabledRow],
+            allowedMentions: { users: [] },
+          });
+          console.error(`[scheduler] publishing error on ${draftId}:`, err.message);
+        }
       } else if (action === "vc_reject") {
         await query(`UPDATE vg_content_drafts SET status='rejected', rejected_reason='Owner rejected' WHERE id=$1`, [draftId]);
         await interaction.message.edit({
@@ -319,10 +342,14 @@ function setupCrons() {
   tasks.push(publishTask);
   console.log("[scheduler] SCHEDULED publisher: every 5 minutes");
 
-  // Daily content generation: 9:30 AM local time
-  const contentTask = cron.schedule("30 9 * * *", runCronDailyContent, { name: "vanguard_content" });
-  tasks.push(contentTask);
-  console.log("[scheduler] DAILY content: 9:30 AM (local)");
+  // Daily content generation: 3x per day (9:30 AM, 2:00 PM, 7:00 PM local time)
+  const content930 = cron.schedule("30 9 * * *", runCronDailyContent, { name: "vanguard_content_930" });
+  tasks.push(content930);
+  const content200 = cron.schedule("0 14 * * *", runCronDailyContent, { name: "vanguard_content_200" });
+  tasks.push(content200);
+  const content700 = cron.schedule("0 19 * * *", runCronDailyContent, { name: "vanguard_content_700" });
+  tasks.push(content700);
+  console.log("[scheduler] DAILY content: 9:30 AM, 2:00 PM, 7:00 PM (local)");
 }
 
 // ── LIFECYCLE ────────────────────────────────────────────────────────────
